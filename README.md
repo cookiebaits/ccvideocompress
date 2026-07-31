@@ -1,5 +1,7 @@
 # CookieClip Compressor 🍪🎥
 
+**[🚀 Try it live here!](https://cookiebaits.github.io/ccvideocompress/)**
+
 A purely client-side, browser-based video compressor and trimmer built for GitHub Pages. 
 
 CookieClip uses WebAssembly (`FFmpeg.wasm`) to process videos locally inside your browser. It formats files perfectly for YouTube (H.264, AAC, and `+faststart`) while drastically reducing file sizes without noticeable quality loss.
@@ -19,7 +21,7 @@ Because this tool utilizes complex multithreading via WebAssembly, modern web br
 2. Download the `coi-serviceworker.js` file from the [official COI Service Worker repo](https://raw.githubusercontent.com/gzuidhof/coi-serviceworker/master/coi-serviceworker.js).
 3. Upload `coi-serviceworker.js` to the root of your repository alongside `index.html`.
 4. Go to your repository settings -> **Pages** -> Deploy from the `main` branch.
-5. Visit your new GitHub pages URL!
+5. Visit your new GitHub pages URL at `https://cookiebaits.github.io/ccvideocompress/`!
 
 ## ⚠️ Limitations
 Since this app relies on your web browser rather than a dedicated desktop application, it is bound by browser limitations:
