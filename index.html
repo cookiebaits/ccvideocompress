@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Browser Video Compressor & Trimmer</title>
+    <title>CookieClip Compressor</title>
     <script src="coi-serviceworker.js"></script>
     <style>
         body {
@@ -79,13 +79,23 @@
             text-decoration: none;
         }
         #message { margin-top: 10px; font-size: 14px; color: #4b5563; }
+        .security-badge {
+            font-size: 12px;
+            color: #059669;
+            background: #d1fae5;
+            padding: 4px 8px;
+            border-radius: 12px;
+            display: inline-block;
+            margin-bottom: 10px;
+        }
     </style>
 </head>
 <body>
 
     <div class="card">
-        <h2>YouTube Video Compressor</h2>
-        <p>Compress and trim your videos right in your browser.</p>
+        <span class="security-badge">🔒 Processes strictly offline in RAM. Clears when tab closes.</span>
+        <h2>CookieClip Compressor</h2>
+        <p>Compress and trim your videos right in your browser for YouTube.</p>
         
         <input type="file" id="uploader" accept="video/*">
         
@@ -127,7 +137,26 @@
         const trimStartInput = document.getElementById('trim-start');
         const trimEndInput = document.getElementById('trim-end');
 
-        // Helper function to get the video's total duration
+        let currentObjectUrl = null;
+
+        // Proactively clear browser memory and FFmpeg virtual files when tab closes or new file is processed
+        const cleanupMemory = () => {
+            if (currentObjectUrl) {
+                URL.revokeObjectURL(currentObjectUrl);
+                currentObjectUrl = null;
+            }
+            
+            try {
+                ffmpeg.deleteFile('input.mp4');
+                ffmpeg.deleteFile('output.mp4');
+            } catch (e) {
+                // Ignore if files haven't been created yet
+            }
+        };
+
+        // If the user navigates away or closes the tab, force cleanup
+        window.addEventListener('beforeunload', cleanupMemory);
+
         const getVideoDuration = (file) => {
             return new Promise((resolve) => {
                 const video = document.createElement('video');
@@ -142,8 +171,7 @@
 
         const loadFFmpeg = async () => {
             message.innerText = "Loading FFmpeg engine... (this may take a moment)";
-            ffmpeg.on('progress', ({ progress, time }) => {
-                // Prevent progress bar from going over 100% or glitching
+            ffmpeg.on('progress', ({ progress }) => {
                 const percent = Math.min(Math.max(Math.round(progress * 100), 0), 100);
                 progressBar.value = percent;
                 statusText.innerText = `Processing... ${percent}%`;
@@ -164,10 +192,13 @@
                 return;
             }
 
+            // Cleanup any previous runs before starting a new one
+            cleanupMemory();
+            downloadLink.style.display = "none";
+
             const trimStart = parseFloat(trimStartInput.value) || 0;
             const trimEnd = parseFloat(trimEndInput.value) || 0;
             
-            // Calculate total duration to figure out how much time to keep
             const totalDuration = await getVideoDuration(file);
             const durationToKeep = totalDuration - trimStart - trimEnd;
 
@@ -178,27 +209,23 @@
 
             convertBtn.disabled = true;
             progressContainer.style.display = "block";
-            downloadLink.style.display = "none";
             message.innerText = "Reading file into browser memory...";
 
             await ffmpeg.writeFile('input.mp4', await fetchFile(file));
 
             message.innerText = "Processing... Leave this tab open.";
             
-            // Build the FFmpeg command dynamically
             const ffmpegArgs = [];
             
-            // If trimming from the start, we use -ss as an input option (much faster)
             if (trimStart > 0) {
                 ffmpegArgs.push('-ss', String(trimStart));
             }
             
-            // If any trimming is happening, we tell FFmpeg how long the final output should be
             if (trimStart > 0 || trimEnd > 0) {
                 ffmpegArgs.push('-t', String(durationToKeep));
             }
 
-            // Append standard compression settings
+            // YouTube recommended settings: H.264 (libx264) + AAC audio + FastStart for streaming
             ffmpegArgs.push(
                 '-i', 'input.mp4',
                 '-c:v', 'libx264',
@@ -206,6 +233,7 @@
                 '-preset', 'veryfast',
                 '-c:a', 'aac',
                 '-b:a', '128k',
+                '-movflags', '+faststart',
                 'output.mp4'
             );
 
@@ -214,8 +242,9 @@
             message.innerText = "Finalizing file...";
             const data = await ffmpeg.readFile('output.mp4');
             
-            const url = URL.createObjectURL(new Blob([data.buffer], { type: 'video/mp4' }));
-            downloadLink.href = url;
+            // Create the temporary Blob URL
+            currentObjectUrl = URL.createObjectURL(new Blob([data.buffer], { type: 'video/mp4' }));
+            downloadLink.href = currentObjectUrl;
             downloadLink.style.display = "block";
             
             message.innerText = "Done! Click the link above to save.";
