@@ -1,259 +1,174 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>CookieClip Compressor</title>
-    <script src="coi-serviceworker.js"></script>
-    <style>
-        body {
-            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-            background-color: #f9fafb;
-            color: #111827;
-            max-width: 600px;
-            margin: 40px auto;
-            padding: 20px;
-            text-align: center;
-        }
-        .card {
-            background: white;
-            padding: 30px;
-            border-radius: 12px;
-            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
-        }
-        input[type="file"] {
-            margin: 20px 0;
-            width: 100%;
-        }
-        .trim-controls {
-            display: flex;
-            justify-content: space-between;
-            gap: 15px;
-            margin-bottom: 20px;
-            text-align: left;
-            background: #f3f4f6;
-            padding: 15px;
-            border-radius: 8px;
-        }
-        .trim-controls label {
-            display: flex;
-            flex-direction: column;
-            font-size: 14px;
-            font-weight: 500;
-            width: 100%;
-        }
-        .trim-controls input {
-            margin-top: 5px;
-            padding: 8px;
-            border: 1px solid #d1d5db;
-            border-radius: 4px;
-            font-size: 16px;
-        }
-        button {
-            background-color: #ff0000;
-            color: white;
-            border: none;
-            padding: 12px 24px;
-            border-radius: 6px;
-            font-size: 16px;
-            cursor: pointer;
-            font-weight: bold;
-            transition: background 0.2s;
-            width: 100%;
-        }
-        button:hover { background-color: #cc0000; }
-        button:disabled { background-color: #ccc; cursor: not-allowed; }
-        #progress-container {
-            margin-top: 20px;
-            display: none;
-        }
-        progress {
-            width: 100%;
-            height: 20px;
-        }
-        #download-link {
-            display: none;
-            margin-top: 20px;
-            color: #2563eb;
-            font-weight: bold;
-            text-decoration: none;
-        }
-        #message { margin-top: 10px; font-size: 14px; color: #4b5563; }
-        .security-badge {
-            font-size: 12px;
-            color: #059669;
-            background: #d1fae5;
-            padding: 4px 8px;
-            border-radius: 12px;
-            display: inline-block;
-            margin-bottom: 10px;
-        }
-    </style>
-</head>
-<body>
+import { FFmpeg } from 'https://unpkg.com/@ffmpeg/ffmpeg@0.12.6/dist/esm/index.js';
+import { fetchFile } from 'https://unpkg.com/@ffmpeg/util@0.12.1/dist/esm/index.js';
 
-    <div class="card">
-        <span class="security-badge">🔒 Processes strictly offline in RAM. Clears when tab closes.</span>
-        <h2>CookieClip Compressor</h2>
-        <p>Compress and trim your videos right in your browser for YouTube.</p>
+const ffmpeg = new FFmpeg();
+const uploader = document.getElementById('uploader');
+const convertBtn = document.getElementById('convert-btn');
+const message = document.getElementById('message');
+const progressContainer = document.getElementById('progress-container');
+const progressBar = document.getElementById('progress-bar');
+const statusText = document.getElementById('status-text');
+const downloadLink = document.getElementById('download-link');
+
+const trimStartInput = document.getElementById('trim-start');
+const trimEndInput = document.getElementById('trim-end');
+
+let currentObjectUrl = null;
+
+const cleanupMemory = () => {
+    if (currentObjectUrl) {
+        URL.revokeObjectURL(currentObjectUrl);
+        currentObjectUrl = null;
+    }
+    
+    try {
+        ffmpeg.deleteFile('input.mp4');
+        ffmpeg.deleteFile('output.mp4');
+    } catch (e) {
+        // Ignore if files haven't been created yet
+    }
+};
+
+window.addEventListener('beforeunload', cleanupMemory);
+
+const getVideoDuration = (file) => {
+    return new Promise((resolve) => {
+        const video = document.createElement('video');
+        video.preload = 'metadata';
+        video.onloadedmetadata = function() {
+            URL.revokeObjectURL(video.src);
+            resolve(video.duration);
+        }
+        video.src = URL.createObjectURL(file);
+    });
+};
+
+// --- NEW CACHING SYSTEM START ---
+const getCachedFFmpegFile = async (url, type) => {
+    const cacheName = 'ffmpeg-engine-cache-v1';
+    const cache = await caches.open(cacheName);
+    let response = await cache.match(url);
+    
+    if (response) {
+        console.log(`Loaded FFmpeg ${type} from local cache.`);
+    } else {
+        console.log(`Downloading FFmpeg ${type} for the first time...`);
+        message.innerText = `Downloading FFmpeg engine (${type})... this only happens once!`;
+        response = await fetch(url);
+        if (response.ok) {
+            // Save a copy to the cache for next time
+            await cache.put(url, response.clone());
+        } else {
+            throw new Error(`Failed to download ${type}`);
+        }
+    }
+    
+    // Convert the cached response into a local blob URL
+    const blob = await response.blob();
+    return URL.createObjectURL(blob);
+};
+// --- NEW CACHING SYSTEM END ---
+
+const loadFFmpeg = async () => {
+    message.innerText = "Checking cache for FFmpeg engine...";
+    
+    try {
+        // Fetch files through our custom cache function
+        const coreURL = 'https://unpkg.com/@ffmpeg/core@0.12.4/dist/esm/ffmpeg-core.js';
+        const wasmURL = 'https://unpkg.com/@ffmpeg/core@0.12.4/dist/esm/ffmpeg-core.wasm';
         
-        <input type="file" id="uploader" accept="video/*">
-        
-        <div class="trim-controls">
-            <label>
-                Cut from Start (seconds)
-                <input type="number" id="trim-start" value="0" min="0" step="0.1">
-            </label>
-            <label>
-                Cut from End (seconds)
-                <input type="number" id="trim-end" value="0" min="0" step="0.1">
-            </label>
-        </div>
+        const cachedCoreURL = await getCachedFFmpegFile(coreURL, 'Core JS');
+        const cachedWasmURL = await getCachedFFmpegFile(wasmURL, 'WASM');
 
-        <button id="convert-btn" disabled>Load FFmpeg to Start</button>
+        ffmpeg.on('progress', ({ progress }) => {
+            const percent = Math.min(Math.max(Math.round(progress * 100), 0), 100);
+            progressBar.value = percent;
+            statusText.innerText = `Processing... ${percent}%`;
+        });
 
-        <div id="progress-container">
-            <p id="status-text">Compressing...</p>
-            <progress id="progress-bar" value="0" max="100"></progress>
-        </div>
+        // Load FFmpeg using the local cached Blob URLs
+        await ffmpeg.load({
+            coreURL: cachedCoreURL,
+            wasmURL: cachedWasmURL,
+        });
 
-        <a id="download-link" href="#" download="compressed_for_youtube.mp4">⬇️ Download Compressed Video</a>
-        <p id="message"></p>
-    </div>
+        message.innerText = "Ready!";
+        convertBtn.innerText = "Compress & Trim Video";
+        convertBtn.disabled = false;
 
-    <script type="module">
-        import { FFmpeg } from 'https://unpkg.com/@ffmpeg/ffmpeg@0.12.6/dist/esm/index.js';
-        import { fetchFile } from 'https://unpkg.com/@ffmpeg/util@0.12.1/dist/esm/index.js';
+        // Clean up the temporary Blob URLs used for loading
+        URL.revokeObjectURL(cachedCoreURL);
+        URL.revokeObjectURL(cachedWasmURL);
 
-        const ffmpeg = new FFmpeg();
-        const uploader = document.getElementById('uploader');
-        const convertBtn = document.getElementById('convert-btn');
-        const message = document.getElementById('message');
-        const progressContainer = document.getElementById('progress-container');
-        const progressBar = document.getElementById('progress-bar');
-        const statusText = document.getElementById('status-text');
-        const downloadLink = document.getElementById('download-link');
-        
-        const trimStartInput = document.getElementById('trim-start');
-        const trimEndInput = document.getElementById('trim-end');
+    } catch (error) {
+        console.error(error);
+        message.innerText = "Error loading FFmpeg engine. Please check your connection and refresh.";
+    }
+};
 
-        let currentObjectUrl = null;
+const processVideo = async () => {
+    const file = uploader.files[0];
+    if (!file) {
+        alert("Please select a video file first.");
+        return;
+    }
 
-        // Proactively clear browser memory and FFmpeg virtual files when tab closes or new file is processed
-        const cleanupMemory = () => {
-            if (currentObjectUrl) {
-                URL.revokeObjectURL(currentObjectUrl);
-                currentObjectUrl = null;
-            }
-            
-            try {
-                ffmpeg.deleteFile('input.mp4');
-                ffmpeg.deleteFile('output.mp4');
-            } catch (e) {
-                // Ignore if files haven't been created yet
-            }
-        };
+    cleanupMemory();
+    downloadLink.style.display = "none";
 
-        // If the user navigates away or closes the tab, force cleanup
-        window.addEventListener('beforeunload', cleanupMemory);
+    const trimStart = parseFloat(trimStartInput.value) || 0;
+    const trimEnd = parseFloat(trimEndInput.value) || 0;
+    
+    const totalDuration = await getVideoDuration(file);
+    const durationToKeep = totalDuration - trimStart - trimEnd;
 
-        const getVideoDuration = (file) => {
-            return new Promise((resolve) => {
-                const video = document.createElement('video');
-                video.preload = 'metadata';
-                video.onloadedmetadata = function() {
-                    URL.revokeObjectURL(video.src);
-                    resolve(video.duration);
-                }
-                video.src = URL.createObjectURL(file);
-            });
-        };
+    if (durationToKeep <= 0) {
+        alert("Your trim times remove the entire video! Please adjust the seconds.");
+        return;
+    }
 
-        const loadFFmpeg = async () => {
-            message.innerText = "Loading FFmpeg engine... (this may take a moment)";
-            ffmpeg.on('progress', ({ progress }) => {
-                const percent = Math.min(Math.max(Math.round(progress * 100), 0), 100);
-                progressBar.value = percent;
-                statusText.innerText = `Processing... ${percent}%`;
-            });
-            await ffmpeg.load({
-                coreURL: 'https://unpkg.com/@ffmpeg/core@0.12.4/dist/esm/ffmpeg-core.js',
-                wasmURL: 'https://unpkg.com/@ffmpeg/core@0.12.4/dist/esm/ffmpeg-core.wasm',
-            });
-            message.innerText = "Ready!";
-            convertBtn.innerText = "Compress & Trim Video";
-            convertBtn.disabled = false;
-        };
+    convertBtn.disabled = true;
+    progressContainer.style.display = "block";
+    message.innerText = "Reading file into browser memory...";
 
-        const processVideo = async () => {
-            const file = uploader.files[0];
-            if (!file) {
-                alert("Please select a video file first.");
-                return;
-            }
+    await ffmpeg.writeFile('input.mp4', await fetchFile(file));
 
-            // Cleanup any previous runs before starting a new one
-            cleanupMemory();
-            downloadLink.style.display = "none";
+    message.innerText = "Processing... Leave this tab open.";
+    
+    const ffmpegArgs = [];
+    
+    if (trimStart > 0) {
+        ffmpegArgs.push('-ss', String(trimStart));
+    }
+    
+    if (trimStart > 0 || trimEnd > 0) {
+        ffmpegArgs.push('-t', String(durationToKeep));
+    }
 
-            const trimStart = parseFloat(trimStartInput.value) || 0;
-            const trimEnd = parseFloat(trimEndInput.value) || 0;
-            
-            const totalDuration = await getVideoDuration(file);
-            const durationToKeep = totalDuration - trimStart - trimEnd;
+    ffmpegArgs.push(
+        '-i', 'input.mp4',
+        '-c:v', 'libx264',
+        '-crf', '23', 
+        '-preset', 'veryfast',
+        '-c:a', 'aac',
+        '-b:a', '128k',
+        '-movflags', '+faststart',
+        'output.mp4'
+    );
 
-            if (durationToKeep <= 0) {
-                alert("Your trim times remove the entire video! Please adjust the seconds.");
-                return;
-            }
+    await ffmpeg.exec(ffmpegArgs);
 
-            convertBtn.disabled = true;
-            progressContainer.style.display = "block";
-            message.innerText = "Reading file into browser memory...";
+    message.innerText = "Finalizing file...";
+    const data = await ffmpeg.readFile('output.mp4');
+    
+    currentObjectUrl = URL.createObjectURL(new Blob([data.buffer], { type: 'video/mp4' }));
+    downloadLink.href = currentObjectUrl;
+    downloadLink.style.display = "block";
+    
+    message.innerText = "Done! Click the link above to save.";
+    progressContainer.style.display = "none";
+    convertBtn.disabled = false;
+};
 
-            await ffmpeg.writeFile('input.mp4', await fetchFile(file));
-
-            message.innerText = "Processing... Leave this tab open.";
-            
-            const ffmpegArgs = [];
-            
-            if (trimStart > 0) {
-                ffmpegArgs.push('-ss', String(trimStart));
-            }
-            
-            if (trimStart > 0 || trimEnd > 0) {
-                ffmpegArgs.push('-t', String(durationToKeep));
-            }
-
-            // YouTube recommended settings: H.264 (libx264) + AAC audio + FastStart for streaming
-            ffmpegArgs.push(
-                '-i', 'input.mp4',
-                '-c:v', 'libx264',
-                '-crf', '23', 
-                '-preset', 'veryfast',
-                '-c:a', 'aac',
-                '-b:a', '128k',
-                '-movflags', '+faststart',
-                'output.mp4'
-            );
-
-            await ffmpeg.exec(ffmpegArgs);
-
-            message.innerText = "Finalizing file...";
-            const data = await ffmpeg.readFile('output.mp4');
-            
-            // Create the temporary Blob URL
-            currentObjectUrl = URL.createObjectURL(new Blob([data.buffer], { type: 'video/mp4' }));
-            downloadLink.href = currentObjectUrl;
-            downloadLink.style.display = "block";
-            
-            message.innerText = "Done! Click the link above to save.";
-            progressContainer.style.display = "none";
-            convertBtn.disabled = false;
-        };
-
-        convertBtn.addEventListener('click', processVideo);
-        loadFFmpeg();
-    </script>
-</body>
-</html>
+convertBtn.addEventListener('click', processVideo);
+loadFFmpeg();
