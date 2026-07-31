@@ -1,0 +1,230 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Browser Video Compressor & Trimmer</title>
+    <script src="coi-serviceworker.js"></script>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            background-color: #f9fafb;
+            color: #111827;
+            max-width: 600px;
+            margin: 40px auto;
+            padding: 20px;
+            text-align: center;
+        }
+        .card {
+            background: white;
+            padding: 30px;
+            border-radius: 12px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+        }
+        input[type="file"] {
+            margin: 20px 0;
+            width: 100%;
+        }
+        .trim-controls {
+            display: flex;
+            justify-content: space-between;
+            gap: 15px;
+            margin-bottom: 20px;
+            text-align: left;
+            background: #f3f4f6;
+            padding: 15px;
+            border-radius: 8px;
+        }
+        .trim-controls label {
+            display: flex;
+            flex-direction: column;
+            font-size: 14px;
+            font-weight: 500;
+            width: 100%;
+        }
+        .trim-controls input {
+            margin-top: 5px;
+            padding: 8px;
+            border: 1px solid #d1d5db;
+            border-radius: 4px;
+            font-size: 16px;
+        }
+        button {
+            background-color: #ff0000;
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            border-radius: 6px;
+            font-size: 16px;
+            cursor: pointer;
+            font-weight: bold;
+            transition: background 0.2s;
+            width: 100%;
+        }
+        button:hover { background-color: #cc0000; }
+        button:disabled { background-color: #ccc; cursor: not-allowed; }
+        #progress-container {
+            margin-top: 20px;
+            display: none;
+        }
+        progress {
+            width: 100%;
+            height: 20px;
+        }
+        #download-link {
+            display: none;
+            margin-top: 20px;
+            color: #2563eb;
+            font-weight: bold;
+            text-decoration: none;
+        }
+        #message { margin-top: 10px; font-size: 14px; color: #4b5563; }
+    </style>
+</head>
+<body>
+
+    <div class="card">
+        <h2>YouTube Video Compressor</h2>
+        <p>Compress and trim your videos right in your browser.</p>
+        
+        <input type="file" id="uploader" accept="video/*">
+        
+        <div class="trim-controls">
+            <label>
+                Cut from Start (seconds)
+                <input type="number" id="trim-start" value="0" min="0" step="0.1">
+            </label>
+            <label>
+                Cut from End (seconds)
+                <input type="number" id="trim-end" value="0" min="0" step="0.1">
+            </label>
+        </div>
+
+        <button id="convert-btn" disabled>Load FFmpeg to Start</button>
+
+        <div id="progress-container">
+            <p id="status-text">Compressing...</p>
+            <progress id="progress-bar" value="0" max="100"></progress>
+        </div>
+
+        <a id="download-link" href="#" download="compressed_for_youtube.mp4">⬇️ Download Compressed Video</a>
+        <p id="message"></p>
+    </div>
+
+    <script type="module">
+        import { FFmpeg } from 'https://unpkg.com/@ffmpeg/ffmpeg@0.12.6/dist/esm/index.js';
+        import { fetchFile } from 'https://unpkg.com/@ffmpeg/util@0.12.1/dist/esm/index.js';
+
+        const ffmpeg = new FFmpeg();
+        const uploader = document.getElementById('uploader');
+        const convertBtn = document.getElementById('convert-btn');
+        const message = document.getElementById('message');
+        const progressContainer = document.getElementById('progress-container');
+        const progressBar = document.getElementById('progress-bar');
+        const statusText = document.getElementById('status-text');
+        const downloadLink = document.getElementById('download-link');
+        
+        const trimStartInput = document.getElementById('trim-start');
+        const trimEndInput = document.getElementById('trim-end');
+
+        // Helper function to get the video's total duration
+        const getVideoDuration = (file) => {
+            return new Promise((resolve) => {
+                const video = document.createElement('video');
+                video.preload = 'metadata';
+                video.onloadedmetadata = function() {
+                    URL.revokeObjectURL(video.src);
+                    resolve(video.duration);
+                }
+                video.src = URL.createObjectURL(file);
+            });
+        };
+
+        const loadFFmpeg = async () => {
+            message.innerText = "Loading FFmpeg engine... (this may take a moment)";
+            ffmpeg.on('progress', ({ progress, time }) => {
+                // Prevent progress bar from going over 100% or glitching
+                const percent = Math.min(Math.max(Math.round(progress * 100), 0), 100);
+                progressBar.value = percent;
+                statusText.innerText = `Processing... ${percent}%`;
+            });
+            await ffmpeg.load({
+                coreURL: 'https://unpkg.com/@ffmpeg/core@0.12.4/dist/esm/ffmpeg-core.js',
+                wasmURL: 'https://unpkg.com/@ffmpeg/core@0.12.4/dist/esm/ffmpeg-core.wasm',
+            });
+            message.innerText = "Ready!";
+            convertBtn.innerText = "Compress & Trim Video";
+            convertBtn.disabled = false;
+        };
+
+        const processVideo = async () => {
+            const file = uploader.files[0];
+            if (!file) {
+                alert("Please select a video file first.");
+                return;
+            }
+
+            const trimStart = parseFloat(trimStartInput.value) || 0;
+            const trimEnd = parseFloat(trimEndInput.value) || 0;
+            
+            // Calculate total duration to figure out how much time to keep
+            const totalDuration = await getVideoDuration(file);
+            const durationToKeep = totalDuration - trimStart - trimEnd;
+
+            if (durationToKeep <= 0) {
+                alert("Your trim times remove the entire video! Please adjust the seconds.");
+                return;
+            }
+
+            convertBtn.disabled = true;
+            progressContainer.style.display = "block";
+            downloadLink.style.display = "none";
+            message.innerText = "Reading file into browser memory...";
+
+            await ffmpeg.writeFile('input.mp4', await fetchFile(file));
+
+            message.innerText = "Processing... Leave this tab open.";
+            
+            // Build the FFmpeg command dynamically
+            const ffmpegArgs = [];
+            
+            // If trimming from the start, we use -ss as an input option (much faster)
+            if (trimStart > 0) {
+                ffmpegArgs.push('-ss', String(trimStart));
+            }
+            
+            // If any trimming is happening, we tell FFmpeg how long the final output should be
+            if (trimStart > 0 || trimEnd > 0) {
+                ffmpegArgs.push('-t', String(durationToKeep));
+            }
+
+            // Append standard compression settings
+            ffmpegArgs.push(
+                '-i', 'input.mp4',
+                '-c:v', 'libx264',
+                '-crf', '23', 
+                '-preset', 'veryfast',
+                '-c:a', 'aac',
+                '-b:a', '128k',
+                'output.mp4'
+            );
+
+            await ffmpeg.exec(ffmpegArgs);
+
+            message.innerText = "Finalizing file...";
+            const data = await ffmpeg.readFile('output.mp4');
+            
+            const url = URL.createObjectURL(new Blob([data.buffer], { type: 'video/mp4' }));
+            downloadLink.href = url;
+            downloadLink.style.display = "block";
+            
+            message.innerText = "Done! Click the link above to save.";
+            progressContainer.style.display = "none";
+            convertBtn.disabled = false;
+        };
+
+        convertBtn.addEventListener('click', processVideo);
+        loadFFmpeg();
+    </script>
+</body>
+</html>
