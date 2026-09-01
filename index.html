@@ -97,7 +97,7 @@
             overflow: hidden;
             text-overflow: ellipsis;
             white-space: nowrap;
-            max-width: 300px;
+            max-width: 320px;
             font-weight: 500;
         }
         .clip-actions {
@@ -105,3 +105,447 @@
             gap: 4px;
         }
         .clip-btn {
+            background: #e5e7eb;
+            border: none;
+            border-radius: 4px;
+            padding: 4px 8px;
+            cursor: pointer;
+            font-size: 11px;
+            color: #374151;
+            width: auto;
+        }
+        .clip-btn:hover { background: #d1d5db; }
+        .clip-btn.delete:hover { background: #fecaca; color: #dc2626; }
+
+        .format-selector {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            background: #f3f4f6;
+            padding: 10px 14px;
+            border-radius: 6px;
+            margin-bottom: 15px;
+            font-size: 14px;
+            font-weight: 500;
+        }
+        select {
+            padding: 6px 12px;
+            border-radius: 4px;
+            border: 1px solid #d1d5db;
+            font-size: 14px;
+        }
+        .trim-controls {
+            display: flex;
+            justify-content: space-between;
+            gap: 15px;
+            margin-bottom: 20px;
+            background: #f3f4f6;
+            padding: 15px;
+            border-radius: 8px;
+        }
+        .trim-controls label {
+            display: flex;
+            flex-direction: column;
+            font-size: 14px;
+            font-weight: 500;
+            width: 100%;
+        }
+        .trim-controls input {
+            margin-top: 5px;
+            padding: 8px;
+            border: 1px solid #d1d5db;
+            border-radius: 4px;
+            font-size: 16px;
+        }
+        input[type="file"] {
+            display: none;
+        }
+        .action-btn {
+            background-color: #ff0000;
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            border-radius: 6px;
+            font-size: 16px;
+            cursor: pointer;
+            font-weight: bold;
+            transition: background 0.2s;
+            width: 100%;
+        }
+        .action-btn:hover { background-color: #cc0000; }
+        .action-btn:disabled { background-color: #ccc; cursor: not-allowed; }
+        
+        #progress-container {
+            margin-top: 20px;
+            display: none;
+            text-align: center;
+        }
+        progress {
+            width: 100%;
+            height: 18px;
+        }
+        .download-box {
+            display: none;
+            margin-top: 20px;
+            text-align: center;
+            background: #eff6ff;
+            border: 1px solid #bfdbfe;
+            padding: 15px;
+            border-radius: 8px;
+        }
+        .download-box a {
+            color: #2563eb;
+            font-weight: bold;
+            text-decoration: none;
+            font-size: 16px;
+        }
+        #message { margin-top: 15px; font-size: 14px; color: #4b5563; text-align: center; font-weight: 500; }
+    </style>
+</head>
+<body>
+
+    <div class="card header-card">
+        <span class="security-badge">🔒 Processes strictly offline in RAM. Clears when tab closes.</span>
+        <h2>CookieClip Combine & Compress</h2>
+        <p class="subtitle">Merge, compress, and trim your clips locally without server uploads.</p>
+        <div class="ephemeral-alert">
+            ⚠️ <strong>Heads Up:</strong> Download your finished videos immediately! No history or files are retained. Everything permanently self-deletes once you close or refresh this tab.
+        </div>
+        <p id="message">Loading FFmpeg engine...</p>
+        <div id="progress-container">
+            <p id="status-text">Processing...</p>
+            <progress id="progress-bar" value="0" max="100"></progress>
+        </div>
+        <div id="download-box" class="download-box">
+            <a id="download-link" href="#" download="">⬇️ Download Processed Video</a>
+        </div>
+    </div>
+
+    <div class="card">
+        <h3>1. Clip Merger</h3>
+        <p class="subtitle">Combine up to 10 clips into a single video sequence.</p>
+
+        <div class="drop-zone" id="merge-drop-zone">
+            <p>📂 Drag & Drop up to 10 videos here or <strong>browse</strong></p>
+            <span class="sub-text">Supported formats: MP4, MOV, WebM</span>
+            <input type="file" id="merge-uploader" accept="video/*" multiple>
+        </div>
+
+        <ul class="clip-list" id="merge-list"></ul>
+
+        <div class="format-selector">
+            <label for="merge-format">Output Format:</label>
+            <select id="merge-format">
+                <option value="mp4">MP4 (.mp4)</option>
+                <option value="mov">MOV (.mov)</option>
+            </select>
+        </div>
+
+        <button id="merge-btn" class="action-btn" disabled>Merge Clips</button>
+    </div>
+
+    <div class="card">
+        <h3>2. Video Compressor & Trim</h3>
+        <p class="subtitle">Compress a single file for YouTube and remove unwanted seconds.</p>
+
+        <div class="drop-zone" id="compress-drop-zone">
+            <p id="compress-filename">📂 Drag & Drop 1 video here or <strong>browse</strong></p>
+            <input type="file" id="compress-uploader" accept="video/*">
+        </div>
+
+        <div class="trim-controls">
+            <label>
+                Cut from Start (seconds)
+                <input type="number" id="trim-start" value="0" min="0" step="0.1">
+            </label>
+            <label>
+                Cut from End (seconds)
+                <input type="number" id="trim-end" value="0" min="0" step="0.1">
+            </label>
+        </div>
+
+        <div class="format-selector">
+            <label for="compress-format">Output Format:</label>
+            <select id="compress-format">
+                <option value="mp4">MP4 (.mp4)</option>
+                <option value="mov">MOV (.mov)</option>
+            </select>
+        </div>
+
+        <button id="compress-btn" class="action-btn" disabled>Compress & Trim</button>
+    </div>
+
+    <script type="module">
+        import { FFmpeg } from 'https://unpkg.com/@ffmpeg/ffmpeg@0.12.10/dist/esm/index.js';
+        import { fetchFile, toBlobURL } from 'https://unpkg.com/@ffmpeg/util@0.12.1/dist/esm/index.js';
+
+        let ffmpeg = null;
+        let isLoaded = false;
+        let currentObjectUrl = null;
+        let mergeFiles = [];
+        let singleCompressFile = null;
+
+        // UI Selectors
+        const message = document.getElementById('message');
+        const progressContainer = document.getElementById('progress-container');
+        const progressBar = document.getElementById('progress-bar');
+        const statusText = document.getElementById('status-text');
+        const downloadBox = document.getElementById('download-box');
+        const downloadLink = document.getElementById('download-link');
+
+        const mergeDropZone = document.getElementById('merge-drop-zone');
+        const mergeUploader = document.getElementById('merge-uploader');
+        const mergeList = document.getElementById('merge-list');
+        const mergeBtn = document.getElementById('merge-btn');
+        const mergeFormat = document.getElementById('merge-format');
+
+        const compressDropZone = document.getElementById('compress-drop-zone');
+        const compressUploader = document.getElementById('compress-uploader');
+        const compressFilename = document.getElementById('compress-filename');
+        const compressBtn = document.getElementById('compress-btn');
+        const compressFormat = document.getElementById('compress-format');
+        const trimStartInput = document.getElementById('trim-start');
+        const trimEndInput = document.getElementById('trim-end');
+
+        // Ephemeral RAM Cleanup
+        const cleanupMemory = () => {
+            if (currentObjectUrl) {
+                URL.revokeObjectURL(currentObjectUrl);
+                currentObjectUrl = null;
+            }
+            mergeFiles = [];
+            singleCompressFile = null;
+        };
+        window.addEventListener('beforeunload', cleanupMemory);
+
+        const updateButtonStates = () => {
+            if (!isLoaded) return;
+            mergeBtn.disabled = mergeFiles.length < 2;
+            compressBtn.disabled = !singleCompressFile;
+        };
+
+        // Initialize FFmpeg
+        const initFFmpeg = async () => {
+            try {
+                ffmpeg = new FFmpeg();
+                ffmpeg.on('progress', ({ progress }) => {
+                    progressBar.value = Math.max(0, Math.min(100, Math.round(progress * 100)));
+                });
+
+                const baseURL = 'https://unpkg.com/@ffmpeg/core@0.12.6/dist/esm';
+                await ffmpeg.load({
+                    coreURL: await toBlobURL(`${baseURL}/ffmpeg-core.js`, 'text/javascript'),
+                    wasmURL: await toBlobURL(`${baseURL}/ffmpeg-core.wasm`, 'application/wasm')
+                });
+
+                isLoaded = true;
+                message.innerText = "✅ FFmpeg Engine Ready.";
+                message.style.color = "#059669";
+                updateButtonStates();
+            } catch (err) {
+                console.error("FFmpeg Load Error:", err);
+                message.innerText = "⚠️ FFmpeg Engine loading delayed or blocked. Check COOP/COEP headers or refresh.";
+                message.style.color = "#b91c1c";
+            }
+        };
+
+        // File Drag & Drop Helper
+        const setupDropZone = (dropZone, uploader, handleFiles) => {
+            dropZone.addEventListener('click', () => uploader.click());
+            dropZone.addEventListener('dragover', (e) => {
+                e.preventDefault();
+                dropZone.classList.add('dragover');
+            });
+            dropZone.addEventListener('dragleave', () => dropZone.classList.remove('dragover'));
+            dropZone.addEventListener('drop', (e) => {
+                e.preventDefault();
+                dropZone.classList.remove('dragover');
+                if (e.dataTransfer.files) handleFiles(e.dataTransfer.files);
+            });
+            uploader.addEventListener('change', (e) => {
+                if (e.target.files) handleFiles(e.target.files);
+            });
+        };
+
+        // Merge logic
+        const handleMergeFiles = (files) => {
+            const incoming = Array.from(files);
+            for (const file of incoming) {
+                if (mergeFiles.length < 10) {
+                    mergeFiles.push(file);
+                } else {
+                    alert("Maximum 10 clips allowed.");
+                    break;
+                }
+            }
+            renderMergeList();
+            updateButtonStates();
+        };
+
+        const renderMergeList = () => {
+            mergeList.innerHTML = '';
+            mergeFiles.forEach((file, index) => {
+                const li = document.createElement('li');
+                li.className = 'clip-item';
+                li.innerHTML = `
+                    <span class="clip-name">${index + 1}. ${file.name}</span>
+                    <div class="clip-actions">
+                        <button class="clip-btn" data-action="up" data-index="${index}" ${index === 0 ? 'disabled' : ''}>▲</button>
+                        <button class="clip-btn" data-action="down" data-index="${index}" ${index === mergeFiles.length - 1 ? 'disabled' : ''}>▼</button>
+                        <button class="clip-btn delete" data-action="delete" data-index="${index}">✕</button>
+                    </div>
+                `;
+                mergeList.appendChild(li);
+            });
+        };
+
+        mergeList.addEventListener('click', (e) => {
+            const btn = e.target.closest('button');
+            if (!btn) return;
+            const index = parseInt(btn.getAttribute('data-index'), 10);
+            const action = btn.getAttribute('data-action');
+
+            if (action === 'up' && index > 0) {
+                const item = mergeFiles.splice(index, 1)[0];
+                mergeFiles.splice(index - 1, 0, item);
+            } else if (action === 'down' && index < mergeFiles.length - 1) {
+                const item = mergeFiles.splice(index, 1)[0];
+                mergeFiles.splice(index + 1, 0, item);
+            } else if (action === 'delete') {
+                mergeFiles.splice(index, 1);
+            }
+            renderMergeList();
+            updateButtonStates();
+        });
+
+        setupDropZone(mergeDropZone, mergeUploader, handleMergeFiles);
+
+        // Compress logic
+        const handleCompressFile = (files) => {
+            if (files.length > 0) {
+                singleCompressFile = files[0];
+                compressFilename.innerHTML = `Selected: <strong>${singleCompressFile.name}</strong>`;
+                updateButtonStates();
+            }
+        };
+
+        setupDropZone(compressDropZone, compressUploader, handleCompressFile);
+
+        const getVideoDuration = (file) => {
+            return new Promise((resolve) => {
+                const video = document.createElement('video');
+                video.preload = 'metadata';
+                video.onloadedmetadata = function() {
+                    URL.revokeObjectURL(video.src);
+                    resolve(video.duration);
+                };
+                video.src = URL.createObjectURL(file);
+            });
+        };
+
+        // Merge Action
+        mergeBtn.addEventListener('click', async () => {
+            if (!isLoaded || mergeFiles.length < 2) return;
+            downloadBox.style.display = 'none';
+            progressContainer.style.display = 'block';
+            statusText.innerText = "Processing & merging clips...";
+            progressBar.value = 0;
+            mergeBtn.disabled = true;
+
+            try {
+                const outExt = mergeFormat.value;
+                const outputName = `merged_output.${outExt}`;
+                let concatListContent = '';
+
+                for (let i = 0; i < mergeFiles.length; i++) {
+                    const inputName = `input_${i}.mp4`;
+                    await ffmpeg.writeFile(inputName, await fetchFile(mergeFiles[i]));
+                    const tsName = `temp_${i}.ts`;
+                    await ffmpeg.exec(['-i', inputName, '-c', 'copy', '-bsf:v', 'h264_mp4toannexb', '-f', 'mpegts', tsName]);
+                    concatListContent += (i === 0 ? '' : '|') + tsName;
+                }
+
+                await ffmpeg.exec([
+                    '-i', `concat:${concatListContent}`,
+                    '-c', 'copy',
+                    '-bsf:a', 'aac_adtstoasc',
+                    outputName
+                ]);
+
+                const data = await ffmpeg.readFile(outputName);
+                if (currentObjectUrl) URL.revokeObjectURL(currentObjectUrl);
+                currentObjectUrl = URL.createObjectURL(new Blob([data.buffer], { type: `video/${outExt}` }));
+
+                downloadLink.href = currentObjectUrl;
+                downloadLink.download = `merged_video.${outExt}`;
+                downloadLink.innerText = `⬇️ Download Merged Video (.${outExt.toUpperCase()})`;
+                downloadBox.style.display = 'block';
+                statusText.innerText = "Done! Download immediately.";
+
+                for (let i = 0; i < mergeFiles.length; i++) {
+                    try {
+                        await ffmpeg.deleteFile(`input_${i}.mp4`);
+                        await ffmpeg.deleteFile(`temp_${i}.ts`);
+                    } catch(e) {}
+                }
+                await ffmpeg.deleteFile(outputName);
+
+            } catch (err) {
+                alert("An error occurred during merging: " + err.message);
+                statusText.innerText = "Failed.";
+            } finally {
+                mergeBtn.disabled = false;
+            }
+        });
+
+        // Compress Action
+        compressBtn.addEventListener('click', async () => {
+            if (!isLoaded || !singleCompressFile) return;
+            downloadBox.style.display = 'none';
+            progressContainer.style.display = 'block';
+            statusText.innerText = "Compressing & trimming video...";
+            progressBar.value = 0;
+            compressBtn.disabled = true;
+
+            try {
+                const outExt = compressFormat.value;
+                const outputName = `compressed_output.${outExt}`;
+                const inputName = 'input_compress.mp4';
+                
+                await ffmpeg.writeFile(inputName, await fetchFile(singleCompressFile));
+                const duration = await getVideoDuration(singleCompressFile);
+
+                const trimStart = parseFloat(trimStartInput.value) || 0;
+                const trimEnd = parseFloat(trimEndInput.value) || 0;
+                const targetDuration = Math.max(0.1, duration - trimStart - trimEnd);
+
+                const args = ['-ss', trimStart.toString(), '-i', inputName, '-t', targetDuration.toString(), '-vcodec', 'libx264', '-crf', '28', outputName];
+                await ffmpeg.exec(args);
+
+                const data = await ffmpeg.readFile(outputName);
+                if (currentObjectUrl) URL.revokeObjectURL(currentObjectUrl);
+                currentObjectUrl = URL.createObjectURL(new Blob([data.buffer], { type: `video/${outExt}` }));
+
+                downloadLink.href = currentObjectUrl;
+                downloadLink.download = `compressed_video.${outExt}`;
+                downloadLink.innerText = `⬇️ Download Processed Video (.${outExt.toUpperCase()})`;
+                downloadBox.style.display = 'block';
+                statusText.innerText = "Done! Download immediately.";
+
+                try {
+                    await ffmpeg.deleteFile(inputName);
+                    await ffmpeg.deleteFile(outputName);
+                } catch(e) {}
+
+            } catch (err) {
+                alert("An error occurred during compression: " + err.message);
+                statusText.innerText = "Failed.";
+            } finally {
+                compressBtn.disabled = false;
+            }
+        });
+
+        initFFmpeg();
+    </script>
+</body>
+</html>
