@@ -137,8 +137,49 @@
         }
         .audio-upload-wrapper {
             display: none;
+            background: #f8fafc;
+            border: 1px solid #e2e8f0;
+            padding: 14px;
+            border-radius: 8px;
             margin-bottom: 15px;
         }
+        .music-settings {
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+            margin-top: 10px;
+            font-size: 13px;
+        }
+        .checkbox-label {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            cursor: pointer;
+            font-weight: 500;
+        }
+        .fade-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 10px;
+            margin-top: 5px;
+            padding-left: 24px;
+        }
+        .fade-input-group {
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+        }
+        .fade-input-group label {
+            font-size: 12px;
+            color: #4b5563;
+        }
+        .fade-input-group input {
+            padding: 6px 8px;
+            border: 1px solid #d1d5db;
+            border-radius: 4px;
+            font-size: 13px;
+        }
+
         .trim-controls {
             display: flex;
             justify-content: space-between;
@@ -249,9 +290,28 @@
         </div>
 
         <div class="audio-upload-wrapper" id="merge-audio-wrapper">
-            <div class="drop-zone" id="merge-audio-drop-zone">
+            <div class="drop-zone" id="merge-audio-drop-zone" style="margin-bottom: 8px;">
                 <p id="merge-audio-label">🎵 Click / Drag background music file (.mp3, .wav, .aac)</p>
                 <input type="file" id="merge-audio-uploader" accept="audio/*">
+            </div>
+
+            <div class="music-settings">
+                <label class="checkbox-label">
+                    <input type="checkbox" id="merge-loop-music" checked> Loop music if video is longer
+                </label>
+                <label class="checkbox-label">
+                    <input type="checkbox" id="merge-fade-music" checked> Enable smooth Fade In & Out
+                </label>
+                <div class="fade-grid" id="merge-fade-controls">
+                    <div class="fade-input-group">
+                        <label for="merge-fade-in">Fade In (sec):</label>
+                        <input type="number" id="merge-fade-in" value="2.0" min="0.1" step="0.5">
+                    </div>
+                    <div class="fade-input-group">
+                        <label for="merge-fade-out">Fade Out (sec):</label>
+                        <input type="number" id="merge-fade-out" value="3.0" min="0.1" step="0.5">
+                    </div>
+                </div>
             </div>
         </div>
 
@@ -297,9 +357,28 @@
         </div>
 
         <div class="audio-upload-wrapper" id="compress-audio-wrapper">
-            <div class="drop-zone" id="compress-audio-drop-zone">
+            <div class="drop-zone" id="compress-audio-drop-zone" style="margin-bottom: 8px;">
                 <p id="compress-audio-label">🎵 Click / Drag background music file (.mp3, .wav, .aac)</p>
                 <input type="file" id="compress-audio-uploader" accept="audio/*">
+            </div>
+
+            <div class="music-settings">
+                <label class="checkbox-label">
+                    <input type="checkbox" id="compress-loop-music" checked> Loop music if video is longer
+                </label>
+                <label class="checkbox-label">
+                    <input type="checkbox" id="compress-fade-music" checked> Enable smooth Fade In & Out
+                </label>
+                <div class="fade-grid" id="compress-fade-controls">
+                    <div class="fade-input-group">
+                        <label for="compress-fade-in">Fade In (sec):</label>
+                        <input type="number" id="compress-fade-in" value="2.0" min="0.1" step="0.5">
+                    </div>
+                    <div class="fade-input-group">
+                        <label for="compress-fade-out">Fade Out (sec):</label>
+                        <input type="number" id="compress-fade-out" value="3.0" min="0.1" step="0.5">
+                    </div>
+                </div>
             </div>
         </div>
 
@@ -348,6 +427,11 @@
         const mergeAudioDropZone = document.getElementById('merge-audio-drop-zone');
         const mergeAudioUploader = document.getElementById('merge-audio-uploader');
         const mergeAudioLabel = document.getElementById('merge-audio-label');
+        const mergeLoopMusic = document.getElementById('merge-loop-music');
+        const mergeFadeMusic = document.getElementById('merge-fade-music');
+        const mergeFadeControls = document.getElementById('merge-fade-controls');
+        const mergeFadeIn = document.getElementById('merge-fade-in');
+        const mergeFadeOut = document.getElementById('merge-fade-out');
 
         // Compress Selectors
         const compressDropZone = document.getElementById('compress-drop-zone');
@@ -362,8 +446,21 @@
         const compressAudioDropZone = document.getElementById('compress-audio-drop-zone');
         const compressAudioUploader = document.getElementById('compress-audio-uploader');
         const compressAudioLabel = document.getElementById('compress-audio-label');
+        const compressLoopMusic = document.getElementById('compress-loop-music');
+        const compressFadeMusic = document.getElementById('compress-fade-music');
+        const compressFadeControls = document.getElementById('compress-fade-controls');
+        const compressFadeIn = document.getElementById('compress-fade-in');
+        const compressFadeOut = document.getElementById('compress-fade-out');
 
-        // Ephemeral RAM Cleanup
+        // Fade UI Toggles
+        mergeFadeMusic.addEventListener('change', () => {
+            mergeFadeControls.style.display = mergeFadeMusic.checked ? 'grid' : 'none';
+        });
+        compressFadeMusic.addEventListener('change', () => {
+            compressFadeControls.style.display = compressFadeMusic.checked ? 'grid' : 'none';
+        });
+
+        // RAM Cleanup
         const cleanupMemory = () => {
             if (currentObjectUrl) {
                 URL.revokeObjectURL(currentObjectUrl);
@@ -405,7 +502,6 @@
             }
         };
 
-        // Drag & Drop helper
         const setupDropZone = (dropZone, uploader, handleFiles) => {
             dropZone.addEventListener('click', () => uploader.click());
             dropZone.addEventListener('dragover', (e) => {
@@ -423,7 +519,6 @@
             });
         };
 
-        // Merge Video List logic
         const handleMergeFiles = (files) => {
             const incoming = Array.from(files);
             for (const file of incoming) {
@@ -474,7 +569,6 @@
             updateButtonStates();
         });
 
-        // Merge Audio Toggle & Input
         mergeAudioMode.addEventListener('change', () => {
             const needsAudio = (mergeAudioMode.value === 'add_music' || mergeAudioMode.value === 'mute_and_add');
             mergeAudioWrapper.style.display = needsAudio ? 'block' : 'none';
@@ -491,7 +585,6 @@
 
         setupDropZone(mergeDropZone, mergeUploader, handleMergeFiles);
 
-        // Compress Input Logic
         const handleCompressFile = (files) => {
             if (files.length > 0) {
                 singleCompressFile = files[0];
@@ -502,7 +595,6 @@
 
         setupDropZone(compressDropZone, compressUploader, handleCompressFile);
 
-        // Compress Audio Toggle & Input
         compressAudioMode.addEventListener('change', () => {
             const needsAudio = (compressAudioMode.value === 'add_music' || compressAudioMode.value === 'mute_and_add');
             compressAudioWrapper.style.display = needsAudio ? 'block' : 'none';
@@ -529,6 +621,18 @@
             });
         };
 
+        // Helper to construct smart audio fade filter
+        const buildAudioFadeFilter = (totalDuration, shouldFade, fadeInSec, fadeOutSec, inputLabel = '1:a', outputLabel = 'afaded') => {
+            if (!shouldFade || totalDuration <= 0.5) {
+                return `[${inputLabel}]anull[${outputLabel}]`;
+            }
+            const fIn = Math.min(parseFloat(fadeInSec) || 2.0, totalDuration / 2);
+            const fOut = Math.min(parseFloat(fadeOutSec) || 3.0, totalDuration / 2);
+            const startOut = Math.max(0, totalDuration - fOut);
+
+            return `[${inputLabel}]afade=t=in:st=0:d=${fIn},afade=t=out:st=${startOut.toFixed(2)}:d=${fOut.toFixed(2)}[${outputLabel}]`;
+        };
+
         // --- MERGE ACTION ---
         mergeBtn.addEventListener('click', async () => {
             if (!isLoaded || mergeFiles.length < 2) return;
@@ -544,8 +648,12 @@
                 const outputName = `merged_output.${outExt}`;
                 const audioMode = mergeAudioMode.value;
                 let concatListContent = '';
+                let totalMergedDuration = 0;
 
                 for (let i = 0; i < mergeFiles.length; i++) {
+                    const dur = await getVideoDuration(mergeFiles[i]);
+                    totalMergedDuration += dur;
+
                     const inputName = `input_${i}.mp4`;
                     ffmpeg.FS('writeFile', inputName, await fetchFile(mergeFiles[i]));
                     const tsName = `temp_${i}.ts`;
@@ -553,7 +661,6 @@
                     concatListContent += (i === 0 ? '' : '|') + tsName;
                 }
 
-                // Concatenate video streams
                 await ffmpeg.run(
                     '-i', `concat:${concatListContent}`,
                     '-c', 'copy',
@@ -561,32 +668,49 @@
                     intermediateConcat
                 );
 
-                // Handle Audio Mode
+                // Audio Treatment
                 if (audioMode === 'mute') {
                     await ffmpeg.run('-i', intermediateConcat, '-c:v', 'copy', '-an', outputName);
-                } else if (audioMode === 'mute_and_add' && mergeAudioFile) {
+                } else if ((audioMode === 'mute_and_add' || audioMode === 'add_music') && mergeAudioFile) {
                     ffmpeg.FS('writeFile', 'merge_bg.mp3', await fetchFile(mergeAudioFile));
-                    await ffmpeg.run(
-                        '-stream_loop', '-1', '-i', 'merge_bg.mp3',
-                        '-i', intermediateConcat,
-                        '-map', '1:v:0', '-map', '0:a:0',
-                        '-c:v', 'copy', '-c:a', 'aac', '-shortest',
-                        outputName
-                    );
-                    try { ffmpeg.FS('unlink', 'merge_bg.mp3'); } catch(e) {}
-                } else if (audioMode === 'add_music' && mergeAudioFile) {
-                    ffmpeg.FS('writeFile', 'merge_bg.mp3', await fetchFile(mergeAudioFile));
-                    await ffmpeg.run(
-                        '-i', intermediateConcat,
-                        '-stream_loop', '-1', '-i', 'merge_bg.mp3',
-                        '-filter_complex', '[0:a][1:a]amix=inputs=2:duration=first:dropout_transition=2[a]',
-                        '-map', '0:v:0', '-map', '[a]',
-                        '-c:v', 'copy', '-c:a', 'aac',
-                        outputName
-                    );
+                    
+                    const isLoop = mergeLoopMusic.checked;
+                    const isFade = mergeFadeMusic.checked;
+                    const fIn = mergeFadeIn.value;
+                    const fOut = mergeFadeOut.value;
+
+                    let bgAudioInputArgs = [];
+                    if (isLoop) {
+                        bgAudioInputArgs.push('-stream_loop', '-1');
+                    }
+                    bgAudioInputArgs.push('-i', 'merge_bg.mp3');
+
+                    const fadeFilter = buildAudioFadeFilter(totalMergedDuration, isFade, fIn, fOut, '1:a', 'bgmusic');
+
+                    if (audioMode === 'mute_and_add') {
+                        await ffmpeg.run(
+                            '-i', intermediateConcat,
+                            ...bgAudioInputArgs,
+                            '-filter_complex', `${fadeFilter}`,
+                            '-map', '0:v:0', '-map', '[bgmusic]',
+                            '-c:v', 'copy', '-c:a', 'aac',
+                            '-t', totalMergedDuration.toString(),
+                            outputName
+                        );
+                    } else {
+                        // add_music: Mix original audio + bgmusic
+                        await ffmpeg.run(
+                            '-i', intermediateConcat,
+                            ...bgAudioInputArgs,
+                            '-filter_complex', `${fadeFilter};[0:a][bgmusic]amix=inputs=2:duration=first:dropout_transition=2[mixed]`,
+                            '-map', '0:v:0', '-map', '[mixed]',
+                            '-c:v', 'copy', '-c:a', 'aac',
+                            '-t', totalMergedDuration.toString(),
+                            outputName
+                        );
+                    }
                     try { ffmpeg.FS('unlink', 'merge_bg.mp3'); } catch(e) {}
                 } else {
-                    // Standard original copy
                     await ffmpeg.run('-i', intermediateConcat, '-c', 'copy', outputName);
                 }
 
@@ -600,7 +724,6 @@
                 downloadBox.style.display = 'block';
                 statusText.innerText = "Done! Download immediately.";
 
-                // Cleanup virtual filesystem
                 for (let i = 0; i < mergeFiles.length; i++) {
                     try {
                         ffmpeg.FS('unlink', `input_${i}.mp4`);
@@ -642,39 +765,62 @@
                 const trimEnd = parseFloat(trimEndInput.value) || 0;
                 const targetDuration = Math.max(0.1, duration - trimStart - trimEnd);
 
-                let ffmpegArgs = ['-ss', trimStart.toString(), '-i', inputName];
-
                 if (audioMode === 'mute') {
-                    ffmpegArgs.push('-t', targetDuration.toString(), '-vcodec', 'libx264', '-crf', '28', '-an', outputName);
-                    await ffmpeg.run(...ffmpegArgs);
-                } else if (audioMode === 'mute_and_add' && compressAudioFile) {
-                    ffmpeg.FS('writeFile', 'compress_bg.mp3', await fetchFile(compressAudioFile));
                     await ffmpeg.run(
                         '-ss', trimStart.toString(), '-i', inputName,
-                        '-stream_loop', '-1', '-i', 'compress_bg.mp3',
                         '-t', targetDuration.toString(),
-                        '-map', '0:v:0', '-map', '1:a:0',
                         '-vcodec', 'libx264', '-crf', '28',
-                        '-c:a', 'aac', '-shortest',
-                        outputName
+                        '-an', outputName
                     );
-                    try { ffmpeg.FS('unlink', 'compress_bg.mp3'); } catch(e) {}
-                } else if (audioMode === 'add_music' && compressAudioFile) {
+                } else if ((audioMode === 'mute_and_add' || audioMode === 'add_music') && compressAudioFile) {
                     ffmpeg.FS('writeFile', 'compress_bg.mp3', await fetchFile(compressAudioFile));
+
+                    const isLoop = compressLoopMusic.checked;
+                    const isFade = compressFadeMusic.checked;
+                    const fIn = compressFadeIn.value;
+                    const fOut = compressFadeOut.value;
+
+                    let bgAudioInputArgs = [];
+                    if (isLoop) {
+                        bgAudioInputArgs.push('-stream_loop', '-1');
+                    }
+                    bgAudioInputArgs.push('-i', 'compress_bg.mp3');
+
+                    const fadeFilter = buildAudioFadeFilter(targetDuration, isFade, fIn, fOut, '1:a', 'bgmusic');
+
+                    if (audioMode === 'mute_and_add') {
+                        await ffmpeg.run(
+                            '-ss', trimStart.toString(), '-i', inputName,
+                            ...bgAudioInputArgs,
+                            '-filter_complex', `${fadeFilter}`,
+                            '-t', targetDuration.toString(),
+                            '-map', '0:v:0', '-map', '[bgmusic]',
+                            '-vcodec', 'libx264', '-crf', '28',
+                            '-c:a', 'aac',
+                            outputName
+                        );
+                    } else {
+                        // add_music
+                        await ffmpeg.run(
+                            '-ss', trimStart.toString(), '-i', inputName,
+                            ...bgAudioInputArgs,
+                            '-filter_complex', `${fadeFilter};[0:a][bgmusic]amix=inputs=2:duration=first:dropout_transition=2[mixed]`,
+                            '-t', targetDuration.toString(),
+                            '-map', '0:v:0', '-map', '[mixed]',
+                            '-vcodec', 'libx264', '-crf', '28',
+                            '-c:a', 'aac',
+                            outputName
+                        );
+                    }
+                    try { ffmpeg.FS('unlink', 'compress_bg.mp3'); } catch(e) {}
+                } else {
                     await ffmpeg.run(
                         '-ss', trimStart.toString(), '-i', inputName,
-                        '-stream_loop', '-1', '-i', 'compress_bg.mp3',
                         '-t', targetDuration.toString(),
-                        '-filter_complex', '[0:a][1:a]amix=inputs=2:duration=first:dropout_transition=2[a]',
-                        '-map', '0:v:0', '-map', '[a]',
                         '-vcodec', 'libx264', '-crf', '28',
                         '-c:a', 'aac',
                         outputName
                     );
-                    try { ffmpeg.FS('unlink', 'compress_bg.mp3'); } catch(e) {}
-                } else {
-                    ffmpegArgs.push('-t', targetDuration.toString(), '-vcodec', 'libx264', '-crf', '28', '-c:a', 'aac', outputName);
-                    await ffmpeg.run(...ffmpegArgs);
                 }
 
                 const data = ffmpeg.FS('readFile', outputName);
