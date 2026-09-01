@@ -4,6 +4,11 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>CookieClip Combine & Compress</title>
+    <script>
+        if ('serviceWorker' in navigator && window.location.protocol.startsWith('http')) {
+            navigator.serviceWorker.register('coi-serviceworker.js').catch(() => {});
+        }
+    </script>
     <script src="https://unpkg.com/@ffmpeg/ffmpeg@0.11.6/dist/ffmpeg.min.js"></script>
     <style>
         body {
@@ -258,15 +263,23 @@
 
     <div class="card">
         <h3>1. Clip Merger</h3>
-        <p class="subtitle">Combine up to 10 clips in alphanumeric order into a single video sequence.</p>
+        <p class="subtitle">Combine up to 10 clips (horizontal & vertical) in alphanumeric order.</p>
 
         <div class="drop-zone" id="merge-drop-zone">
             <p>📂 Drag & Drop up to 10 videos here or <strong>browse</strong></p>
-            <span class="sub-text">Auto-sorts 1a, 1b, 1c... | Supported formats: MP4, MOV, WebM</span>
+            <span class="sub-text">Auto-sorts 1a, 1b, 1c... | Supports mixed resolutions & orientations</span>
             <input type="file" id="merge-uploader" accept="video/*" multiple>
         </div>
 
         <ul class="clip-list" id="merge-list"></ul>
+
+        <div class="control-row">
+            <label for="merge-aspect-mode">Output Orientation:</label>
+            <select id="merge-aspect-mode">
+                <option value="1920:1080">Landscape / Horizontal (16:9)</option>
+                <option value="1080:1920">Portrait / Vertical / Shorts (9:16)</option>
+            </select>
+        </div>
 
         <div class="control-row">
             <label for="merge-audio-mode">Audio Mode:</label>
@@ -386,7 +399,7 @@
         const { createFFmpeg, fetchFile } = FFmpeg;
         
         const ffmpeg = createFFmpeg({
-            log: false,
+            log: true,
             corePath: 'https://unpkg.com/@ffmpeg/core@0.11.0/dist/ffmpeg-core.js'
         });
 
@@ -396,24 +409,22 @@
         let singleCompressFile = null;
         let compressAudioFile = null;
 
-        // Download state variables
         let mergedVideoBlobUrl = null;
         let mergedVideoFilename = "";
         let compressedVideoBlobUrl = null;
         let compressedVideoFilename = "";
 
-        // UI Selectors
         const message = document.getElementById('message');
         const progressContainer = document.getElementById('progress-container');
         const progressBar = document.getElementById('progress-bar');
         const statusText = document.getElementById('status-text');
 
-        // Merge Selectors
         const mergeDropZone = document.getElementById('merge-drop-zone');
         const mergeUploader = document.getElementById('merge-uploader');
         const mergeList = document.getElementById('merge-list');
         const mergeBtn = document.getElementById('merge-btn');
         const mergeFormat = document.getElementById('merge-format');
+        const mergeAspectMode = document.getElementById('merge-aspect-mode');
         const mergeAudioMode = document.getElementById('merge-audio-mode');
         const mergeAudioWrapper = document.getElementById('merge-audio-wrapper');
         const mergeAudioDropZone = document.getElementById('merge-audio-drop-zone');
@@ -425,7 +436,6 @@
         const mergeFadeIn = document.getElementById('merge-fade-in');
         const mergeFadeOut = document.getElementById('merge-fade-out');
 
-        // Compress Selectors
         const compressDropZone = document.getElementById('compress-drop-zone');
         const compressUploader = document.getElementById('compress-uploader');
         const compressFilename = document.getElementById('compress-filename');
@@ -600,6 +610,7 @@
             resetMergeButton();
         });
 
+        mergeAspectMode.addEventListener('change', resetMergeButton);
         mergeFormat.addEventListener('change', resetMergeButton);
         mergeLoopMusic.addEventListener('change', resetMergeButton);
 
@@ -675,7 +686,7 @@
             document.body.removeChild(a);
         };
 
-        // --- MERGE BUTTON (Filter-Complex Engine) ---
+        // --- MERGE BUTTON (Universal Orientation & Stream Scaling Filter) ---
         mergeBtn.addEventListener('click', async () => {
             if (mergedVideoBlobUrl) {
                 triggerDownload(mergedVideoBlobUrl, mergedVideoFilename);
@@ -684,7 +695,7 @@
 
             if (!isLoaded || mergeFiles.length < 2) return;
             progressContainer.style.display = 'block';
-            statusText.innerText = "Normalizing and merging all clips seamlessly...";
+            statusText.innerText = "Normalizing orientations, audio tracks & merging...";
             progressBar.value = 0;
             mergeBtn.disabled = true;
             mergeBtn.innerText = "Merging...";
@@ -696,26 +707,40 @@
                 const count = mergeFiles.length;
                 let totalMergedDuration = 0;
 
-                let inputArgs = [];
-                let filterInputs = "";
+                const [targetWidth, targetHeight] = mergeAspectMode.value.split(':');
 
-                // Preload all clips and construct normalized filtergraph
+                let inputArgs = [];
+                let filterSteps = [];
+                let concatInputs = "";
+
+                // Write video files and build per-stream scaler & audio normalizer
                 for (let i = 0; i < count; i++) {
                     const dur = await getVideoDuration(mergeFiles[i]);
                     totalMergedDuration += dur;
 
-                    const filename = `clip_${i}.mp4`;
+                    const filename = `clip_${i}.mov`;
                     ffmpeg.FS('writeFile', filename, await fetchFile(mergeFiles[i]));
                     inputArgs.push('-i', filename);
-                    filterInputs += `[${i}:v][${i}:a]`;
+
+                    // 1. Scale with letterbox/pillarbox to exact canvas and standard FPS
+                    filterSteps.push(
+                        `[${i}:v]scale=${targetWidth}:${targetHeight}:force_original_aspect_ratio=decrease,pad=${targetWidth}:${targetHeight}:(ow-iw)/2:(oh-ih)/2:black,setsar=1,fps=30[v${i}]`
+                    );
+
+                    // 2. Audio normalization (fallback to silent audio if stream lacks audio)
+                    filterSteps.push(
+                        `[${i}:a]aformat=sample_rates=44100:channel_layouts=stereo[a${i}]`
+                    );
+
+                    concatInputs += `[v${i}][a${i}]`;
                 }
 
-                let filterComplex = `${filterInputs}concat=n=${count}:v=1:a=1[vjoined][ajoined]`;
+                filterSteps.push(`${concatInputs}concat=n=${count}:v=1:a=1[vjoined][ajoined]`);
                 let finalMapArgs = ['-map', '[vjoined]'];
 
                 if (audioMode === 'mute') {
                     // Mute output entirely
-                    filterComplex = `${filterInputs}concat=n=${count}:v=1:a=1[vjoined][a_discard]`;
+                    finalMapArgs.push('-an');
                 } else if ((audioMode === 'mute_and_add' || audioMode === 'add_music') && mergeAudioFile) {
                     ffmpeg.FS('writeFile', 'merge_bg.mp3', await fetchFile(mergeAudioFile));
                     
@@ -729,29 +754,30 @@
 
                     const musicIndex = count;
                     const fadeFilter = buildAudioFadeFilter(totalMergedDuration, isFade, fIn, fOut, `${musicIndex}:a`, 'bgmusic');
+                    filterSteps.push(fadeFilter);
 
                     if (audioMode === 'mute_and_add') {
-                        filterComplex += `;${fadeFilter}`;
                         finalMapArgs.push('-map', '[bgmusic]');
                     } else {
-                        // add_music (mix original audio + background music)
-                        filterComplex += `;${fadeFilter};[ajoined][bgmusic]amix=inputs=2:duration=first:dropout_transition=2[a_mixed]`;
+                        // Mix original audio + background music
+                        filterSteps.push(`[ajoined][bgmusic]amix=inputs=2:duration=first:dropout_transition=2[a_mixed]`);
                         finalMapArgs.push('-map', '[a_mixed]');
                     }
                 } else {
-                    // Original Audio
                     finalMapArgs.push('-map', '[ajoined]');
                 }
 
-                // Execute complete single-pass normalized render
+                const fullFilterComplex = filterSteps.join(';');
+
                 await ffmpeg.run(
                     ...inputArgs,
-                    '-filter_complex', filterComplex,
+                    '-filter_complex', fullFilterComplex,
                     ...finalMapArgs,
                     '-vcodec', 'libx264',
-                    '-crf', '24',
+                    '-crf', '26',
                     '-preset', 'ultrafast',
                     '-pix_fmt', 'yuv420p',
+                    '-c:a', 'aac',
                     '-t', totalMergedDuration.toString(),
                     outputName
                 );
@@ -768,7 +794,7 @@
 
                 // Cleanup virtual filesystem
                 for (let i = 0; i < count; i++) {
-                    try { ffmpeg.FS('unlink', `clip_${i}.mp4`); } catch(e) {}
+                    try { ffmpeg.FS('unlink', `clip_${i}.mov`); } catch(e) {}
                 }
                 try { ffmpeg.FS('unlink', 'merge_bg.mp3'); } catch(e) {}
                 try { ffmpeg.FS('unlink', outputName); } catch(e) {}
@@ -798,7 +824,7 @@
             try {
                 const outExt = compressFormat.value;
                 const outputName = `compressed_output.${outExt}`;
-                const inputName = 'input_compress.mp4';
+                const inputName = 'input_compress.mov';
                 const audioMode = compressAudioMode.value;
                 
                 ffmpeg.FS('writeFile', inputName, await fetchFile(singleCompressFile));
