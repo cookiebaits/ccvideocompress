@@ -4,6 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>CookieClip Combine & Compress</title>
+    <script src="coi-serviceworker.js"></script>
     <style>
         body {
             font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
@@ -38,18 +39,18 @@
             font-weight: 500;
         }
 
-        /* Inline Loading Component */
+        /* Inline Loading Card */
         #init-container {
             background: #f8fafc;
             border: 1px solid #e2e8f0;
             border-radius: 8px;
-            padding: 20px;
-            margin: 20px 0;
-            box-shadow: inset 0 2px 4px rgba(0,0,0,0.02);
+            padding: 16px 20px;
+            margin: 15px 0 20px 0;
+            text-align: center;
         }
         #init-container h3 {
-            margin: 0 0 5px 0;
-            font-size: 16px;
+            margin: 0 0 6px 0;
+            font-size: 15px;
             color: #1e293b;
             display: flex;
             align-items: center;
@@ -57,16 +58,15 @@
             gap: 8px;
         }
         .spinner {
-            width: 18px; height: 18px;
-            border: 3px solid #cbd5e1; border-top: 3px solid #3b82f6;
+            width: 16px; height: 16px;
+            border: 2px solid #cbd5e1; border-top: 2px solid #3b82f6;
             border-radius: 50%;
-            animation: spin 1s linear infinite;
+            animation: spin 0.8s linear infinite;
         }
         @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
         
         #init-status { margin: 0; font-size: 13px; color: #64748b; }
-        /* Indeterminate progress bar to show activity without calculating raw bytes */
-        #init-progress { width: 100%; height: 8px; margin-top: 15px; border-radius: 4px; }
+        #init-progress { width: 100%; height: 6px; margin-top: 12px; border-radius: 3px; }
 
         .ephemeral-alert {
             background-color: #fffbeb;
@@ -91,7 +91,7 @@
         }
         .drop-zone:not(.disabled):hover { border-color: #9ca3af; background-color: #f3f4f6; }
         .drop-zone.dragover { background-color: #eff6ff; border-color: #3b82f6; }
-        .drop-zone.disabled { opacity: 0.6; cursor: not-allowed; border-color: #e5e7eb; }
+        .drop-zone.disabled { opacity: 0.55; cursor: not-allowed; border-color: #e5e7eb; background-color: #f9fafb; }
         .drop-zone p { margin: 0; font-size: 14px; color: #4b5563; }
         .drop-zone span.sub-text { font-size: 12px; color: #9ca3af; }
         
@@ -112,7 +112,7 @@
             display: flex; align-items: center; justify-content: space-between; background: #f3f4f6; padding: 10px 14px; border-radius: 6px; margin-bottom: 12px; font-size: 14px; font-weight: 500;
         }
         select { padding: 6px 12px; border-radius: 4px; border: 1px solid #d1d5db; font-size: 14px; max-width: 60%; }
-        select:disabled { opacity: 0.6; cursor: not-allowed; }
+        select:disabled, input:disabled { opacity: 0.55; cursor: not-allowed; }
         
         .audio-upload-wrapper {
             display: none; background: #f8fafc; border: 1px solid #e2e8f0; padding: 14px; border-radius: 8px; margin-bottom: 15px;
@@ -142,6 +142,7 @@
         #progress-container { margin-top: 20px; display: none; text-align: center; }
         #processing-progress { width: 100%; height: 18px; }
         #status-text { margin-bottom: 5px; font-size: 14px; color: #4b5563; font-weight: 500; }
+        #message { margin-top: 15px; font-size: 14px; color: #059669; text-align: center; font-weight: 500; display: none; }
     </style>
 </head>
 <body>
@@ -153,9 +154,11 @@
         
         <div id="init-container">
             <h3><div class="spinner"></div> Loading Components</h3>
-            <p id="init-status">Downloading engine to browser cache. Please wait...</p>
+            <p id="init-status">Downloading engine to browser cache (one-time only)...</p>
             <progress id="init-progress"></progress>
         </div>
+
+        <p id="message">✅ FFmpeg Engine Ready (Offline Cache Active).</p>
 
         <div class="ephemeral-alert">
             ⚠️ <strong>Heads Up:</strong> Download your finished videos immediately! No history or files are retained. Everything permanently self-deletes once you close or refresh this tab.
@@ -313,7 +316,8 @@
     </div>
 
     <script type="module">
-        import { FFmpeg } from 'https://unpkg.com/@ffmpeg/ffmpeg@0.12.10/dist/esm/index.js';
+        import { FFmpeg } from 'https://cdn.jsdelivr.net/npm/@ffmpeg/ffmpeg@0.12.10/dist/esm/index.js';
+        import { toBlobURL } from 'https://cdn.jsdelivr.net/npm/@ffmpeg/util@0.12.1/dist/esm/index.js';
         
         const ffmpeg = new FFmpeg();
         let isLoaded = false;
@@ -331,6 +335,7 @@
         // UI Selectors
         const initContainer = document.getElementById('init-container');
         const initStatus = document.getElementById('init-status');
+        const message = document.getElementById('message');
         const progressContainer = document.getElementById('progress-container');
         const processingProgress = document.getElementById('processing-progress');
         const statusText = document.getElementById('status-text');
@@ -430,23 +435,21 @@
             }
         };
 
-        // --- SAFE ASSET DOWNLOADER & CACHER ---
-        // Uses native fetch and stores response in CacheStorage. Avoids ReadableStream parsing which causes hangs on compressed CDN traffic.
-        const fetchAsset = async (url, mimeType) => {
-            const cache = await caches.open('cookieclip-engine-v3');
-            let response = await cache.match(url);
-            
-            if (response) {
+        // Persistent CacheStorage Pipeline
+        const getCachedBlobURL = async (url, mimeType) => {
+            try {
+                const cache = await caches.open('cookieclip-v1');
+                let response = await cache.match(url);
+                if (!response) {
+                    response = await fetch(url);
+                    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+                    await cache.put(url, response.clone());
+                }
                 const blob = await response.blob();
                 return URL.createObjectURL(new Blob([blob], { type: mimeType }));
+            } catch (e) {
+                return await toBlobURL(url, mimeType);
             }
-            
-            response = await fetch(url);
-            if (!response.ok) throw new Error(`Network failed fetching ${url}`);
-            
-            await cache.put(url, response.clone());
-            const blob = await response.blob();
-            return URL.createObjectURL(new Blob([blob], { type: mimeType }));
         };
 
         const loadFFmpeg = async () => {
@@ -455,28 +458,23 @@
                     processingProgress.value = Math.max(0, Math.min(100, Math.round(progress * 100)));
                 });
 
-                // Utilize Single-Threaded Core to permanently bypass SharedArrayBuffer & Worker strict CORS blocks.
-                const coreURLPath = 'https://unpkg.com/@ffmpeg/core-st@0.12.6/dist/esm';
-                const wrapperURLPath = 'https://unpkg.com/@ffmpeg/ffmpeg@0.12.10/dist/esm';
+                const baseURL = 'https://cdn.jsdelivr.net/npm/@ffmpeg/core@0.12.6/dist/esm';
                 
-                const [coreURL, wasmURL, workerURL] = await Promise.all([
-                    fetchAsset(`${coreURLPath}/ffmpeg-core.js`, 'text/javascript'),
-                    fetchAsset(`${coreURLPath}/ffmpeg-core.wasm`, 'application/wasm'),
-                    fetchAsset(`${wrapperURLPath}/worker.js`, 'text/javascript')
+                const [coreURL, wasmURL] = await Promise.all([
+                    getCachedBlobURL(`${baseURL}/ffmpeg-core.js`, 'text/javascript'),
+                    getCachedBlobURL(`${baseURL}/ffmpeg-core.wasm`, 'application/wasm')
                 ]);
 
-                initStatus.innerText = "Engine downloaded. Initializing in browser...";
+                initStatus.innerText = "Engine ready. Launching sandbox...";
 
-                await ffmpeg.load({
-                    coreURL: coreURL,
-                    wasmURL: wasmURL,
-                    classWorkerURL: workerURL
-                });
+                await ffmpeg.load({ coreURL, wasmURL });
 
                 isLoaded = true;
                 
-                // Hide loader and enable all UI elements
+                // Hide loader and activate all UI controls
                 initContainer.style.display = 'none';
+                message.style.display = 'block';
+                
                 document.querySelectorAll('input, select, .drop-zone').forEach(el => {
                     if (el.classList.contains('drop-zone')) {
                         el.classList.remove('disabled');
@@ -489,7 +487,7 @@
 
             } catch (err) {
                 console.error("Engine Load Error:", err);
-                initContainer.innerHTML = `<h3 style="color: #dc2626;">⚠️ Engine Failed to Load</h3><p style="font-size: 13px; color: #4b5563;">${err.message}. Please check your connection and refresh.</p>`;
+                initContainer.innerHTML = `<h3 style="color: #dc2626;">⚠️ Engine Load Delayed</h3><p style="font-size: 13px; color: #4b5563;">Please do a one-time hard refresh (<strong>Ctrl+Shift+R</strong> or <strong>Cmd+Shift+R</strong>) to activate security headers.</p>`;
             }
         };
 
