@@ -3,194 +3,105 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>CookieClip Compressor</title>
+    <title>CookieClip Combine & Compress</title>
     <script src="coi-serviceworker.js"></script>
     <style>
         body {
             font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
             background-color: #f9fafb;
             color: #111827;
-            max-width: 600px;
-            margin: 40px auto;
+            max-width: 650px;
+            margin: 30px auto;
             padding: 20px;
             text-align: center;
         }
         .card {
             background: white;
-            padding: 30px;
+            padding: 25px;
             border-radius: 12px;
-            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
-        }
-        input[type="file"] {
-            margin: 20px 0;
-            width: 100%;
-        }
-        .trim-controls {
-            display: flex;
-            justify-content: space-between;
-            gap: 15px;
-            margin-bottom: 20px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.08);
+            margin-bottom: 25px;
             text-align: left;
-            background: #f3f4f6;
-            padding: 15px;
-            border-radius: 8px;
         }
-        .trim-controls label {
-            display: flex;
-            flex-direction: column;
-            font-size: 14px;
-            font-weight: 500;
-            width: 100%;
+        .header-card {
+            text-align: center;
         }
-        .trim-controls input {
+        h2 {
             margin-top: 5px;
-            padding: 8px;
-            border: 1px solid #d1d5db;
-            border-radius: 4px;
-            font-size: 16px;
+            margin-bottom: 8px;
         }
-        button {
-            background-color: #ff0000;
-            color: white;
-            border: none;
-            padding: 12px 24px;
-            border-radius: 6px;
-            font-size: 16px;
-            cursor: pointer;
-            font-weight: bold;
-            transition: background 0.2s;
-            width: 100%;
+        p.subtitle {
+            margin-top: 0;
+            color: #6b7280;
+            font-size: 14px;
         }
-        button:hover { background-color: #cc0000; }
-        button:disabled { background-color: #ccc; cursor: not-allowed; }
-        #progress-container {
-            margin-top: 20px;
-            display: none;
-        }
-        progress {
-            width: 100%;
-            height: 20px;
-        }
-        #download-link {
-            display: none;
-            margin-top: 20px;
-            color: #2563eb;
-            font-weight: bold;
-            text-decoration: none;
-        }
-        #message { margin-top: 10px; font-size: 14px; color: #4b5563; }
         .security-badge {
             font-size: 12px;
             color: #059669;
             background: #d1fae5;
-            padding: 4px 8px;
+            padding: 4px 10px;
             border-radius: 12px;
             display: inline-block;
             margin-bottom: 10px;
+            font-weight: 500;
         }
-    </style>
-</head>
-<body>
-
-    <div class="card">
-        <span class="security-badge">🔒 Processes strictly offline in RAM. Clears when tab closes.</span>
-        <h2>CookieClip Compressor</h2>
-        <p>Compress and trim your videos right in your browser for YouTube.</p>
-        
-        <input type="file" id="uploader" accept="video/*">
-        
-        <div class="trim-controls">
-            <label>
-                Cut from Start (seconds)
-                <input type="number" id="trim-start" value="0" min="0" step="0.1">
-            </label>
-            <label>
-                Cut from End (seconds)
-                <input type="number" id="trim-end" value="0" min="0" step="0.1">
-            </label>
-        </div>
-
-        <button id="convert-btn" disabled>Load FFmpeg to Start</button>
-
-        <div id="progress-container">
-            <p id="status-text">Compressing...</p>
-            <progress id="progress-bar" value="0" max="100"></progress>
-        </div>
-
-        <a id="download-link" href="#" download="compressed_for_youtube.mp4">⬇️ Download Compressed Video</a>
-        <p id="message"></p>
-    </div>
-
-    <script type="module">
-        import { FFmpeg } from '[https://unpkg.com/@ffmpeg/ffmpeg@0.12.6/dist/esm/index.js](https://unpkg.com/@ffmpeg/ffmpeg@0.12.6/dist/esm/index.js)';
-        import { fetchFile } from '[https://unpkg.com/@ffmpeg/util@0.12.1/dist/esm/index.js](https://unpkg.com/@ffmpeg/util@0.12.1/dist/esm/index.js)';
-
-        const ffmpeg = new FFmpeg();
-        const uploader = document.getElementById('uploader');
-        const convertBtn = document.getElementById('convert-btn');
-        const message = document.getElementById('message');
-        const progressContainer = document.getElementById('progress-container');
-        const progressBar = document.getElementById('progress-bar');
-        const statusText = document.getElementById('status-text');
-        const downloadLink = document.getElementById('download-link');
-        
-        const trimStartInput = document.getElementById('trim-start');
-        const trimEndInput = document.getElementById('trim-end');
-
-        let currentObjectUrl = null;
-
-        const cleanupMemory = () => {
-            if (currentObjectUrl) {
-                URL.revokeObjectURL(currentObjectUrl);
-                currentObjectUrl = null;
-            }
-            
-            try {
-                ffmpeg.deleteFile('input.mp4');
-                ffmpeg.deleteFile('output.mp4');
-            } catch (e) {
-                // Ignore if files haven't been created yet
-            }
-        };
-
-        window.addEventListener('beforeunload', cleanupMemory);
-
-        const getVideoDuration = (file) => {
-            return new Promise((resolve) => {
-                const video = document.createElement('video');
-                video.preload = 'metadata';
-                video.onloadedmetadata = function() {
-                    URL.revokeObjectURL(video.src);
-                    resolve(video.duration);
-                }
-                video.src = URL.createObjectURL(file);
-            });
-        };
-
-        const getCachedFFmpegFile = async (url, type) => {
-            const cacheName = 'ffmpeg-engine-cache-v1';
-            const cache = await caches.open(cacheName);
-            let response = await cache.match(url);
-            
-            if (response) {
-                console.log(`Loaded FFmpeg ${type} from local cache.`);
-            } else {
-                console.log(`Downloading FFmpeg ${type} for the first time...`);
-                message.innerText = `Downloading FFmpeg engine (${type})... this only happens once!`;
-                response = await fetch(url);
-                if (response.ok) {
-                    await cache.put(url, response.clone());
-                } else {
-                    throw new Error(`Failed to download ${type}`);
-                }
-            }
-            
-            const blob = await response.blob();
-            return URL.createObjectURL(blob);
-        };
-
-        const loadFFmpeg = async () => {
-            message.innerText = "Checking cache for FFmpeg engine...";
-            
-            try {
-                const coreURL = '[https://unpkg.com/@ffmpeg/](https://unpkg.com/@ffmpeg/)
+        .ephemeral-alert {
+            background-color: #fffbeb;
+            border-left: 4px solid #f59e0b;
+            color: #92400e;
+            padding: 10px 14px;
+            font-size: 13px;
+            border-radius: 4px;
+            margin-bottom: 15px;
+            line-height: 1.4;
+        }
+        .drop-zone {
+            border: 2px dashed #d1d5db;
+            border-radius: 8px;
+            padding: 24px 15px;
+            text-align: center;
+            cursor: pointer;
+            background-color: #fafafa;
+            transition: all 0.2s ease;
+            margin-bottom: 15px;
+        }
+        .drop-zone.dragover {
+            background-color: #eff6ff;
+            border-color: #3b82f6;
+        }
+        .drop-zone p {
+            margin: 0;
+            font-size: 14px;
+            color: #4b5563;
+        }
+        .drop-zone span.sub-text {
+            font-size: 12px;
+            color: #9ca3af;
+        }
+        .clip-list {
+            list-style: none;
+            padding: 0;
+            margin: 0 0 15px 0;
+        }
+        .clip-item {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            background: #f3f4f6;
+            padding: 8px 12px;
+            border-radius: 6px;
+            margin-bottom: 6px;
+            font-size: 13px;
+        }
+        .clip-item .clip-name {
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+            max-width: 300px;
+            font-weight: 500;
+        }
+        .clip-actions {
+            display: flex;
+            gap: 4px;
+        }
+        .clip-btn {
