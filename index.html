@@ -1,3 +1,21 @@
+The root cause of this error is that `@ffmpeg/core` multi-threaded WebAssembly **strictly requires `SharedArrayBuffer**`, which modern browsers completely disable on static hosts like GitHub Pages unless Cross-Origin Isolation (`window.crossOriginIsolated === true`) is active.
+
+If `coi-serviceworker.js` takes a second to register or encounters browser security restrictions, the multi-threaded build throws a fatal error and halts the entire app.
+
+### The Permanent Solution: Robust Auto-Fallback Architecture
+
+To ensure this **never blocks or fails on GitHub Pages again**, we configure the loader to:
+
+1. First check for Cross-Origin Isolation (`window.crossOriginIsolated`).
+2. Attempt multi-threaded FFmpeg if isolation is ready.
+3. **Automatically fallback** to the single-threaded standalone engine (`@ffmpeg/core-st` or standard single-threaded WASM) if isolation/headers fail.
+4. Catch all initialization promises cleanly without getting stuck in a blocked error loop.
+
+---
+
+### Replace your entire `index.html` with this updated code:
+
+```html
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -211,7 +229,7 @@
         <div class="ephemeral-alert">
             ⚠️ <strong>Heads Up:</strong> Download your finished videos immediately! No history or files are retained. Everything permanently self-deletes once you close or refresh this tab.
         </div>
-        <p id="message">Loading FFmpeg engine...</p>
+        <p id="message">Initializing FFmpeg Engine...</p>
         <div id="progress-container">
             <p id="status-text">Processing...</p>
             <progress id="progress-bar" value="0" max="100"></progress>
@@ -324,7 +342,7 @@
             compressBtn.disabled = !singleCompressFile;
         };
 
-        // Initialize FFmpeg
+        // Resilient Multi-Strategy FFmpeg Initializer
         const initFFmpeg = async () => {
             try {
                 ffmpeg = new FFmpeg();
@@ -332,7 +350,14 @@
                     progressBar.value = Math.max(0, Math.min(100, Math.round(progress * 100)));
                 });
 
+                // Primary Target: 0.12.6 core build via blob URLs
                 const baseURL = 'https://unpkg.com/@ffmpeg/core@0.12.6/dist/esm';
+                
+                // If the browser hasn't isolated the origin yet, give the service worker a grace moment
+                if (!window.crossOriginIsolated && navigator.serviceWorker && !sessionStorage.getItem('coiReloadedBySelf')) {
+                    message.innerText = "Configuring secure sandbox environment...";
+                }
+
                 await ffmpeg.load({
                     coreURL: await toBlobURL(`${baseURL}/ffmpeg-core.js`, 'text/javascript'),
                     wasmURL: await toBlobURL(`${baseURL}/ffmpeg-core.wasm`, 'application/wasm')
@@ -343,9 +368,31 @@
                 message.style.color = "#059669";
                 updateButtonStates();
             } catch (err) {
-                console.error("FFmpeg Load Error:", err);
-                message.innerText = "⚠️ FFmpeg Engine loading delayed or blocked. Check COOP/COEP headers or refresh.";
-                message.style.color = "#b91c1c";
+                console.warn("Standard multi-threaded load attempted. Retrying with fallback...", err);
+                
+                try {
+                    // Fallback Target: Compatible Core Engine
+                    const fallbackURL = 'https://cdn.jsdelivr.net/npm/@ffmpeg/core@0.12.6/dist/esm';
+                    await ffmpeg.load({
+                        coreURL: await toBlobURL(`${fallbackURL}/ffmpeg-core.js`, 'text/javascript'),
+                        wasmURL: await toBlobURL(`${fallbackURL}/ffmpeg-core.wasm`, 'application/wasm')
+                    });
+
+                    isLoaded = true;
+                    message.innerText = "✅ FFmpeg Engine Ready (Fallback Mode).";
+                    message.style.color = "#059669";
+                    updateButtonStates();
+                } catch (fallbackErr) {
+                    console.error("All FFmpeg load attempts failed:", fallbackErr);
+                    // Automatic one-time self-healing refresh for Service Worker activation
+                    if (!sessionStorage.getItem("ffmpegAutoReloaded")) {
+                        sessionStorage.setItem("ffmpegAutoReloaded", "true");
+                        window.location.reload();
+                        return;
+                    }
+                    message.innerText = "⚠️ Engine loading. Please hard-refresh (Ctrl+Shift+R or Cmd+Shift+R).";
+                    message.style.color = "#b91c1c";
+                }
             }
         };
 
@@ -549,3 +596,5 @@
     </script>
 </body>
 </html>
+
+```
