@@ -4,7 +4,6 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>CookieClip Combine & Compress</title>
-    <script src="coi-serviceworker.js"></script>
     <style>
         body {
             font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
@@ -16,42 +15,6 @@
             text-align: center;
         }
         
-        /* Initialization Overlay */
-        #init-overlay {
-            position: fixed;
-            top: 0; left: 0; width: 100%; height: 100%;
-            background: rgba(17, 24, 39, 0.85);
-            backdrop-filter: blur(4px);
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            z-index: 9999;
-        }
-        .init-modal {
-            background: white;
-            padding: 30px 40px;
-            border-radius: 12px;
-            width: 90%;
-            max-width: 450px;
-            text-align: center;
-            box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
-        }
-        .init-modal h3 {
-            margin-top: 0;
-            font-size: 20px;
-            color: #111827;
-        }
-        .init-modal p {
-            color: #4b5563;
-            font-size: 14px;
-            margin-bottom: 20px;
-        }
-        .init-modal progress {
-            width: 100%;
-            height: 12px;
-            border-radius: 6px;
-        }
-
         .card {
             background: white;
             padding: 25px;
@@ -74,6 +37,37 @@
             margin-bottom: 10px;
             font-weight: 500;
         }
+
+        /* Inline Loading Component */
+        #init-container {
+            background: #f8fafc;
+            border: 1px solid #e2e8f0;
+            border-radius: 8px;
+            padding: 20px;
+            margin: 20px 0;
+            box-shadow: inset 0 2px 4px rgba(0,0,0,0.02);
+        }
+        #init-container h3 {
+            margin: 0 0 5px 0;
+            font-size: 16px;
+            color: #1e293b;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+        }
+        .spinner {
+            width: 18px; height: 18px;
+            border: 3px solid #cbd5e1; border-top: 3px solid #3b82f6;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+        }
+        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+        
+        #init-status { margin: 0; font-size: 13px; color: #64748b; }
+        /* Indeterminate progress bar to show activity without calculating raw bytes */
+        #init-progress { width: 100%; height: 8px; margin-top: 15px; border-radius: 4px; }
+
         .ephemeral-alert {
             background-color: #fffbeb;
             border-left: 4px solid #f59e0b;
@@ -84,6 +78,7 @@
             margin-bottom: 15px;
             line-height: 1.4;
         }
+
         .drop-zone {
             border: 2px dashed #d1d5db;
             border-radius: 8px;
@@ -94,30 +89,21 @@
             transition: all 0.2s ease;
             margin-bottom: 15px;
         }
-        .drop-zone.dragover {
-            background-color: #eff6ff;
-            border-color: #3b82f6;
-        }
+        .drop-zone:not(.disabled):hover { border-color: #9ca3af; background-color: #f3f4f6; }
+        .drop-zone.dragover { background-color: #eff6ff; border-color: #3b82f6; }
+        .drop-zone.disabled { opacity: 0.6; cursor: not-allowed; border-color: #e5e7eb; }
         .drop-zone p { margin: 0; font-size: 14px; color: #4b5563; }
         .drop-zone span.sub-text { font-size: 12px; color: #9ca3af; }
         
         .clip-list { list-style: none; padding: 0; margin: 0 0 15px 0; }
         .clip-item {
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-            background: #f3f4f6;
-            padding: 8px 12px;
-            border-radius: 6px;
-            margin-bottom: 6px;
-            font-size: 13px;
+            display: flex; align-items: center; justify-content: space-between;
+            background: #f3f4f6; padding: 8px 12px; border-radius: 6px; margin-bottom: 6px; font-size: 13px;
         }
-        .clip-item .clip-name {
-            overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 320px; font-weight: 500;
-        }
+        .clip-item .clip-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 320px; font-weight: 500; }
         .clip-actions { display: flex; gap: 4px; }
         .clip-btn {
-            background: #e5e7eb; border: none; border-radius: 4px; padding: 4px 8px; cursor: pointer; font-size: 11px; color: #374151; width: auto;
+            background: #e5e7eb; border: none; border-radius: 4px; padding: 4px 8px; cursor: pointer; font-size: 11px; color: #374151;
         }
         .clip-btn:hover { background: #d1d5db; }
         .clip-btn.delete:hover { background: #fecaca; color: #dc2626; }
@@ -126,6 +112,7 @@
             display: flex; align-items: center; justify-content: space-between; background: #f3f4f6; padding: 10px 14px; border-radius: 6px; margin-bottom: 12px; font-size: 14px; font-weight: 500;
         }
         select { padding: 6px 12px; border-radius: 4px; border: 1px solid #d1d5db; font-size: 14px; max-width: 60%; }
+        select:disabled { opacity: 0.6; cursor: not-allowed; }
         
         .audio-upload-wrapper {
             display: none; background: #f8fafc; border: 1px solid #e2e8f0; padding: 14px; border-radius: 8px; margin-bottom: 15px;
@@ -147,37 +134,36 @@
         .action-btn {
             background-color: #ff0000; color: white; border: none; padding: 12px 24px; border-radius: 6px; font-size: 16px; cursor: pointer; font-weight: bold; transition: background 0.2s; width: 100%;
         }
-        .action-btn:hover { background-color: #cc0000; }
+        .action-btn:hover:not(:disabled) { background-color: #cc0000; }
         .action-btn:disabled { background-color: #ccc; cursor: not-allowed; }
         .action-btn.ready-download { background-color: #059669; }
         .action-btn.ready-download:hover { background-color: #047857; }
         
         #progress-container { margin-top: 20px; display: none; text-align: center; }
-        progress { width: 100%; height: 18px; }
-        #message { margin-top: 15px; font-size: 14px; color: #4b5563; text-align: center; font-weight: 500; }
+        #processing-progress { width: 100%; height: 18px; }
+        #status-text { margin-bottom: 5px; font-size: 14px; color: #4b5563; font-weight: 500; }
     </style>
 </head>
 <body>
-
-    <div id="init-overlay">
-        <div class="init-modal">
-            <h3>Loading Components ⚙️</h3>
-            <p id="init-status">Downloading Core Engine (Please Wait)...</p>
-            <progress id="init-progress-bar" value="0" max="100"></progress>
-        </div>
-    </div>
 
     <div class="card header-card">
         <span class="security-badge">🔒 Processes strictly offline in RAM. Clears when tab closes.</span>
         <h2>CookieClip Combine & Compress</h2>
         <p class="subtitle">Merge, compress, customize audio, and trim clips locally without servers.</p>
+        
+        <div id="init-container">
+            <h3><div class="spinner"></div> Loading Components</h3>
+            <p id="init-status">Downloading engine to browser cache. Please wait...</p>
+            <progress id="init-progress"></progress>
+        </div>
+
         <div class="ephemeral-alert">
             ⚠️ <strong>Heads Up:</strong> Download your finished videos immediately! No history or files are retained. Everything permanently self-deletes once you close or refresh this tab.
         </div>
-        <p id="message">Waiting for engine...</p>
+
         <div id="progress-container">
             <p id="status-text">Processing...</p>
-            <progress id="progress-bar" value="0" max="100"></progress>
+            <progress id="processing-progress" value="0" max="100"></progress>
         </div>
     </div>
 
@@ -185,7 +171,7 @@
         <h3>1. Clip Merger</h3>
         <p class="subtitle">Combine up to 10 clips with automatic orientation centering and scaling.</p>
 
-        <div class="drop-zone" id="merge-drop-zone">
+        <div class="drop-zone disabled" id="merge-drop-zone">
             <p>📂 Drag & Drop up to 10 videos here or <strong>browse</strong></p>
             <span class="sub-text">Auto-sorts 1a, 1b, 1c... | Supports mixed horizontal & vertical clips</span>
             <input type="file" id="merge-uploader" accept="video/*" multiple disabled>
@@ -195,7 +181,7 @@
 
         <div class="control-row">
             <label for="merge-orientation">Output Orientation:</label>
-            <select id="merge-orientation">
+            <select id="merge-orientation" disabled>
                 <option value="horizontal">Landscape / Horizontal (16:9)</option>
                 <option value="vertical">Portrait / Vertical / Shorts (9:16)</option>
             </select>
@@ -203,7 +189,7 @@
 
         <div class="control-row">
             <label for="merge-resolution">Target Resolution:</label>
-            <select id="merge-resolution">
+            <select id="merge-resolution" disabled>
                 <option value="480">480p (SD)</option>
                 <option value="720">720p (HD)</option>
                 <option value="1080" selected>1080p (Full HD)</option>
@@ -214,7 +200,7 @@
 
         <div class="control-row">
             <label for="merge-audio-mode">Audio Mode:</label>
-            <select id="merge-audio-mode">
+            <select id="merge-audio-mode" disabled>
                 <option value="original">Keep Original Audio</option>
                 <option value="mute">Mute Output Video</option>
                 <option value="add_music">Add Custom Background Music</option>
@@ -223,26 +209,26 @@
         </div>
 
         <div class="audio-upload-wrapper" id="merge-audio-wrapper">
-            <div class="drop-zone" id="merge-audio-drop-zone" style="margin-bottom: 8px;">
+            <div class="drop-zone disabled" id="merge-audio-drop-zone" style="margin-bottom: 8px;">
                 <p id="merge-audio-label">🎵 Click / Drag background music file (.mp3, .wav, .aac)</p>
                 <input type="file" id="merge-audio-uploader" accept="audio/*" disabled>
             </div>
 
             <div class="music-settings">
                 <label class="checkbox-label">
-                    <input type="checkbox" id="merge-loop-music" checked> Loop music if video is longer
+                    <input type="checkbox" id="merge-loop-music" checked disabled> Loop music if video is longer
                 </label>
                 <label class="checkbox-label">
-                    <input type="checkbox" id="merge-fade-music" checked> Enable smooth Fade In & Out
+                    <input type="checkbox" id="merge-fade-music" checked disabled> Enable smooth Fade In & Out
                 </label>
                 <div class="fade-grid" id="merge-fade-controls">
                     <div class="fade-input-group">
                         <label for="merge-fade-in">Fade In (sec):</label>
-                        <input type="number" id="merge-fade-in" value="2.0" min="0.1" step="0.5">
+                        <input type="number" id="merge-fade-in" value="2.0" min="0.1" step="0.5" disabled>
                     </div>
                     <div class="fade-input-group">
                         <label for="merge-fade-out">Fade Out (sec):</label>
-                        <input type="number" id="merge-fade-out" value="3.0" min="0.1" step="0.5">
+                        <input type="number" id="merge-fade-out" value="3.0" min="0.1" step="0.5" disabled>
                     </div>
                 </div>
             </div>
@@ -250,7 +236,7 @@
 
         <div class="control-row">
             <label for="merge-format">Output Format:</label>
-            <select id="merge-format">
+            <select id="merge-format" disabled>
                 <option value="mp4">MP4 (.mp4)</option>
                 <option value="mov">MOV (.mov)</option>
             </select>
@@ -263,7 +249,7 @@
         <h3>2. Video Compressor & Trim</h3>
         <p class="subtitle">Compress a single file for YouTube, adjust audio, and trim timing.</p>
 
-        <div class="drop-zone" id="compress-drop-zone">
+        <div class="drop-zone disabled" id="compress-drop-zone">
             <p id="compress-filename">📂 Drag & Drop 1 video here or <strong>browse</strong></p>
             <input type="file" id="compress-uploader" accept="video/*" disabled>
         </div>
@@ -271,17 +257,17 @@
         <div class="trim-controls">
             <label>
                 Cut from Start (seconds)
-                <input type="number" id="trim-start" value="0" min="0" step="0.1">
+                <input type="number" id="trim-start" value="0" min="0" step="0.1" disabled>
             </label>
             <label>
                 Cut from End (seconds)
-                <input type="number" id="trim-end" value="0" min="0" step="0.1">
+                <input type="number" id="trim-end" value="0" min="0" step="0.1" disabled>
             </label>
         </div>
 
         <div class="control-row">
             <label for="compress-audio-mode">Audio Mode:</label>
-            <select id="compress-audio-mode">
+            <select id="compress-audio-mode" disabled>
                 <option value="original">Keep Original Audio</option>
                 <option value="mute">Mute Output Video</option>
                 <option value="add_music">Add Custom Background Music</option>
@@ -290,26 +276,26 @@
         </div>
 
         <div class="audio-upload-wrapper" id="compress-audio-wrapper">
-            <div class="drop-zone" id="compress-audio-drop-zone" style="margin-bottom: 8px;">
+            <div class="drop-zone disabled" id="compress-audio-drop-zone" style="margin-bottom: 8px;">
                 <p id="compress-audio-label">🎵 Click / Drag background music file (.mp3, .wav, .aac)</p>
                 <input type="file" id="compress-audio-uploader" accept="audio/*" disabled>
             </div>
 
             <div class="music-settings">
                 <label class="checkbox-label">
-                    <input type="checkbox" id="compress-loop-music" checked> Loop music if video is longer
+                    <input type="checkbox" id="compress-loop-music" checked disabled> Loop music if video is longer
                 </label>
                 <label class="checkbox-label">
-                    <input type="checkbox" id="compress-fade-music" checked> Enable smooth Fade In & Out
+                    <input type="checkbox" id="compress-fade-music" checked disabled> Enable smooth Fade In & Out
                 </label>
                 <div class="fade-grid" id="compress-fade-controls">
                     <div class="fade-input-group">
                         <label for="compress-fade-in">Fade In (sec):</label>
-                        <input type="number" id="compress-fade-in" value="2.0" min="0.1" step="0.5">
+                        <input type="number" id="compress-fade-in" value="2.0" min="0.1" step="0.5" disabled>
                     </div>
                     <div class="fade-input-group">
                         <label for="compress-fade-out">Fade Out (sec):</label>
-                        <input type="number" id="compress-fade-out" value="3.0" min="0.1" step="0.5">
+                        <input type="number" id="compress-fade-out" value="3.0" min="0.1" step="0.5" disabled>
                     </div>
                 </div>
             </div>
@@ -317,7 +303,7 @@
 
         <div class="control-row">
             <label for="compress-format">Output Format:</label>
-            <select id="compress-format">
+            <select id="compress-format" disabled>
                 <option value="mp4">MP4 (.mp4)</option>
                 <option value="mov">MOV (.mov)</option>
             </select>
@@ -327,10 +313,11 @@
     </div>
 
     <script type="module">
-        import { FFmpeg } from 'https://cdn.jsdelivr.net/npm/@ffmpeg/ffmpeg@0.12.10/dist/esm/index.js';
+        import { FFmpeg } from 'https://unpkg.com/@ffmpeg/ffmpeg@0.12.10/dist/esm/index.js';
         
         const ffmpeg = new FFmpeg();
         let isLoaded = false;
+        
         let mergeFiles = [];
         let mergeAudioFile = null;
         let singleCompressFile = null;
@@ -342,14 +329,11 @@
         let compressedVideoFilename = "";
 
         // UI Selectors
-        const message = document.getElementById('message');
-        const progressContainer = document.getElementById('progress-container');
-        const progressBar = document.getElementById('progress-bar');
-        const statusText = document.getElementById('status-text');
-
-        const initOverlay = document.getElementById('init-overlay');
+        const initContainer = document.getElementById('init-container');
         const initStatus = document.getElementById('init-status');
-        const initProgressBar = document.getElementById('init-progress-bar');
+        const progressContainer = document.getElementById('progress-container');
+        const processingProgress = document.getElementById('processing-progress');
+        const statusText = document.getElementById('status-text');
 
         const mergeDropZone = document.getElementById('merge-drop-zone');
         const mergeUploader = document.getElementById('merge-uploader');
@@ -416,16 +400,6 @@
             resetCompressButton();
         });
 
-        const cleanupMemory = () => {
-            if (mergedVideoBlobUrl) URL.revokeObjectURL(mergedVideoBlobUrl);
-            if (compressedVideoBlobUrl) URL.revokeObjectURL(compressedVideoBlobUrl);
-            mergeFiles = [];
-            mergeAudioFile = null;
-            singleCompressFile = null;
-            compressAudioFile = null;
-        };
-        window.addEventListener('beforeunload', cleanupMemory);
-
         const updateButtonStates = () => {
             if (!isLoaded) return;
 
@@ -456,84 +430,43 @@
             }
         };
 
-        // --- FOREVER CACHE ENGINE WITH PROGRESS STREAMING ---
-        const fetchWithProgress = async (url, mimeType, assetName, expectedSizeMB) => {
-            const cacheName = 'cookieclip-ffmpeg-v0126-v2';
-            let cache = null;
-            try {
-                cache = await caches.open(cacheName);
-                const cachedMatch = await cache.match(url);
-                if (cachedMatch) {
-                    const blob = await cachedMatch.blob();
-                    initProgressBar.value = 100;
-                    return URL.createObjectURL(new Blob([blob], { type: mimeType }));
-                }
-            } catch (e) {
-                console.warn('CacheStorage access warning:', e);
-            }
-
-            initStatus.innerText = `Downloading ${assetName} to local browser cache...`;
-            initProgressBar.value = 0;
+        // --- SAFE ASSET DOWNLOADER & CACHER ---
+        // Uses native fetch and stores response in CacheStorage. Avoids ReadableStream parsing which causes hangs on compressed CDN traffic.
+        const fetchAsset = async (url, mimeType) => {
+            const cache = await caches.open('cookieclip-engine-v3');
+            let response = await cache.match(url);
             
-            let response = null;
-            try {
-                response = await fetch(url);
-            } catch(e) {
-                const fallbackUrl = url.includes('jsdelivr') 
-                    ? url.replace('https://cdn.jsdelivr.net/npm', 'https://unpkg.com')
-                    : url.replace('https://unpkg.com', 'https://cdn.jsdelivr.net/npm');
-                response = await fetch(fallbackUrl);
+            if (response) {
+                const blob = await response.blob();
+                return URL.createObjectURL(new Blob([blob], { type: mimeType }));
             }
-
-            if (!response || !response.ok) throw new Error(`Failed to download ${assetName}`);
-
-            const contentLength = response.headers.get('content-length');
-            const totalBytes = contentLength ? parseInt(contentLength, 10) : (expectedSizeMB * 1024 * 1024);
-            let loadedBytes = 0;
-
-            const reader = response.body.getReader();
-            const stream = new ReadableStream({
-                async start(controller) {
-                    while (true) {
-                        const { done, value } = await reader.read();
-                        if (done) break;
-                        loadedBytes += value.byteLength;
-                        if (totalBytes) {
-                            initProgressBar.value = Math.round((loadedBytes / totalBytes) * 100);
-                        }
-                        controller.enqueue(value);
-                    }
-                    controller.close();
-                }
-            });
-
-            const newResponse = new Response(stream, { headers: response.headers });
-            const blob = await newResponse.clone().blob();
-
-            if (cache) {
-                try { await cache.put(url, newResponse); } catch(e) {}
-            }
-
+            
+            response = await fetch(url);
+            if (!response.ok) throw new Error(`Network failed fetching ${url}`);
+            
+            await cache.put(url, response.clone());
+            const blob = await response.blob();
             return URL.createObjectURL(new Blob([blob], { type: mimeType }));
         };
 
         const loadFFmpeg = async () => {
             try {
                 ffmpeg.on('progress', ({ progress }) => {
-                    progressBar.value = Math.max(0, Math.min(100, Math.round(progress * 100)));
+                    processingProgress.value = Math.max(0, Math.min(100, Math.round(progress * 100)));
                 });
 
-                const ffmpegPkgURL = 'https://cdn.jsdelivr.net/npm/@ffmpeg/ffmpeg@0.12.10/dist/esm';
-                const corePkgURL = 'https://cdn.jsdelivr.net/npm/@ffmpeg/core@0.12.6/dist/esm';
+                // Utilize Single-Threaded Core to permanently bypass SharedArrayBuffer & Worker strict CORS blocks.
+                const coreURLPath = 'https://unpkg.com/@ffmpeg/core-st@0.12.6/dist/esm';
+                const wrapperURLPath = 'https://unpkg.com/@ffmpeg/ffmpeg@0.12.10/dist/esm';
                 
-                // Fetch assets sequentially to provide clean UI progress (Worker solves the CORS error)
-                const workerURL = await fetchWithProgress(`${ffmpegPkgURL}/worker.js`, 'text/javascript', 'Web Worker Security Layer', 0.5);
-                const coreURL = await fetchWithProgress(`${corePkgURL}/ffmpeg-core.js`, 'text/javascript', 'Engine Core', 0.5);
-                const wasmURL = await fetchWithProgress(`${corePkgURL}/ffmpeg-core.wasm`, 'application/wasm', 'WebAssembly Binary (Large)', 30);
+                const [coreURL, wasmURL, workerURL] = await Promise.all([
+                    fetchAsset(`${coreURLPath}/ffmpeg-core.js`, 'text/javascript'),
+                    fetchAsset(`${coreURLPath}/ffmpeg-core.wasm`, 'application/wasm'),
+                    fetchAsset(`${wrapperURLPath}/worker.js`, 'text/javascript')
+                ]);
 
-                initStatus.innerText = "Connecting to Engine...";
-                
-                // classWorkerURL is passed to bypass the cross-origin worker restriction natively
+                initStatus.innerText = "Engine downloaded. Initializing in browser...";
+
                 await ffmpeg.load({
                     coreURL: coreURL,
                     wasmURL: wasmURL,
@@ -542,33 +475,29 @@
 
                 isLoaded = true;
                 
-                // Unlock UI Elements
-                initOverlay.style.display = 'none';
-                message.innerText = "✅ FFmpeg Engine Ready (Loaded directly from cache).";
-                message.style.color = "#059669";
-                
-                mergeUploader.disabled = false;
-                compressUploader.disabled = false;
-                mergeAudioUploader.disabled = false;
-                compressAudioUploader.disabled = false;
+                // Hide loader and enable all UI elements
+                initContainer.style.display = 'none';
+                document.querySelectorAll('input, select, .drop-zone').forEach(el => {
+                    if (el.classList.contains('drop-zone')) {
+                        el.classList.remove('disabled');
+                    } else {
+                        el.disabled = false;
+                    }
+                });
                 
                 updateButtonStates();
 
             } catch (err) {
-                console.error("FFmpeg Engine Load Failure:", err);
-                initStatus.innerHTML = `⚠️ <strong style="color: #dc2626;">Network Error:</strong> ${err.message}. Please refresh the page.`;
+                console.error("Engine Load Error:", err);
+                initContainer.innerHTML = `<h3 style="color: #dc2626;">⚠️ Engine Failed to Load</h3><p style="font-size: 13px; color: #4b5563;">${err.message}. Please check your connection and refresh.</p>`;
             }
         };
 
-        const fetchLocalFile = async (file) => {
-            return new Uint8Array(await file.arrayBuffer());
-        };
-
         const setupDropZone = (dropZone, uploader, handleFiles) => {
-            dropZone.addEventListener('click', () => { if(!uploader.disabled) uploader.click(); });
+            dropZone.addEventListener('click', () => { if (!uploader.disabled) uploader.click(); });
             dropZone.addEventListener('dragover', (e) => {
                 e.preventDefault();
-                if(!uploader.disabled) dropZone.classList.add('dragover');
+                if (!uploader.disabled) dropZone.classList.add('dragover');
             });
             dropZone.addEventListener('dragleave', () => dropZone.classList.remove('dragover'));
             dropZone.addEventListener('drop', (e) => {
@@ -582,20 +511,14 @@
         };
 
         const naturalSortFiles = (fileArray) => {
-            return fileArray.sort((a, b) => {
-                return a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: 'base' });
-            });
+            return fileArray.sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: 'base' }));
         };
 
         const handleMergeFiles = (files) => {
             const incoming = Array.from(files);
             for (const file of incoming) {
-                if (mergeFiles.length < 10) {
-                    mergeFiles.push(file);
-                } else {
-                    alert("Maximum 10 clips allowed.");
-                    break;
-                }
+                if (mergeFiles.length < 10) mergeFiles.push(file);
+                else { alert("Maximum 10 clips allowed."); break; }
             }
             mergeFiles = naturalSortFiles(mergeFiles);
             resetMergeButton();
@@ -700,14 +623,13 @@
             });
         };
 
+        const fetchLocalFile = async (file) => new Uint8Array(await file.arrayBuffer());
+
         const buildAudioFadeFilter = (totalDuration, shouldFade, fadeInSec, fadeOutSec, inputLabel = 'bg_raw', outputLabel = 'bgmusic') => {
-            if (!shouldFade || totalDuration <= 0.5) {
-                return `[${inputLabel}]anull[${outputLabel}]`;
-            }
+            if (!shouldFade || totalDuration <= 0.5) return `[${inputLabel}]anull[${outputLabel}]`;
             const fIn = Math.min(parseFloat(fadeInSec) || 2.0, totalDuration / 2);
             const fOut = Math.min(parseFloat(fadeOutSec) || 3.0, totalDuration / 2);
             const startOut = Math.max(0, totalDuration - fOut);
-
             return `[${inputLabel}]afade=t=in:st=0:d=${fIn},afade=t=out:st=${startOut.toFixed(2)}:d=${fOut.toFixed(2)}[${outputLabel}]`;
         };
 
@@ -731,7 +653,7 @@
             if (!isLoaded || mergeFiles.length < 2) return;
             progressContainer.style.display = 'block';
             statusText.innerText = "Centering orientations, scaling & merging...";
-            progressBar.value = 0;
+            processingProgress.value = 0;
             mergeBtn.disabled = true;
             mergeBtn.innerText = "Merging...";
 
@@ -756,14 +678,8 @@
                     await ffmpeg.writeFile(filename, await fetchLocalFile(mergeFiles[i]));
                     inputArgs.push('-i', filename);
 
-                    filterSteps.push(
-                        `[${i}:v]scale=${targetW}:${targetH}:force_original_aspect_ratio=decrease,pad=${targetW}:${targetH}:(ow-iw)/2:(oh-ih)/2:black,setsar=1,fps=30[v${i}]`
-                    );
-
-                    filterSteps.push(
-                        `[${i}:a]aformat=sample_rates=44100:channel_layouts=stereo[a${i}]`
-                    );
-
+                    filterSteps.push(`[${i}:v]scale=${targetW}:${targetH}:force_original_aspect_ratio=decrease,pad=${targetW}:${targetH}:(ow-iw)/2:(oh-ih)/2:black,setsar=1,fps=30[v${i}]`);
+                    filterSteps.push(`[${i}:a]aformat=sample_rates=44100:channel_layouts=stereo[a${i}]`);
                     concatInputs += `[v${i}][a${i}]`;
                 }
 
@@ -803,12 +719,8 @@
                     ...inputArgs,
                     '-filter_complex', fullFilterComplex,
                     ...finalMapArgs,
-                    '-vcodec', 'libx264',
-                    '-crf', '24',
-                    '-preset', 'ultrafast',
-                    '-pix_fmt', 'yuv420p',
-                    '-c:a', 'aac',
-                    '-t', totalMergedDuration.toString(),
+                    '-vcodec', 'libx264', '-crf', '24', '-preset', 'ultrafast',
+                    '-pix_fmt', 'yuv420p', '-c:a', 'aac', '-t', totalMergedDuration.toString(),
                     outputName
                 ]);
 
@@ -846,7 +758,7 @@
             if (!isLoaded || !singleCompressFile) return;
             progressContainer.style.display = 'block';
             statusText.innerText = "Compressing, trimming & mixing audio...";
-            progressBar.value = 0;
+            processingProgress.value = 0;
             compressBtn.disabled = true;
             compressBtn.innerText = "Compressing...";
 
@@ -940,7 +852,6 @@
             }
         });
 
-        // Initialize script logic
         loadFFmpeg();
     </script>
 </body>
