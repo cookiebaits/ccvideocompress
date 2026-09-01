@@ -249,7 +249,7 @@
         <div class="ephemeral-alert">
             ⚠️ <strong>Heads Up:</strong> Download your finished videos immediately! No history or files are retained. Everything permanently self-deletes once you close or refresh this tab.
         </div>
-        <p id="message">Initializing FFmpeg engine...</p>
+        <p id="message">Checking local cache for FFmpeg engine...</p>
         <div id="progress-container">
             <p id="status-text">Processing...</p>
             <progress id="progress-bar" value="0" max="100"></progress>
@@ -402,8 +402,8 @@
     </div>
 
     <script type="module">
-        import { FFmpeg } from 'https://unpkg.com/@ffmpeg/ffmpeg@0.12.10/dist/esm/index.js';
-        import { fetchFile, toBlobURL } from 'https://unpkg.com/@ffmpeg/util@0.12.1/dist/esm/index.js';
+        import { FFmpeg } from 'https://cdn.jsdelivr.net/npm/@ffmpeg/ffmpeg@0.12.10/dist/esm/index.js';
+        import { fetchFile } from 'https://cdn.jsdelivr.net/npm/@ffmpeg/util@0.12.1/dist/esm/index.js';
 
         const ffmpeg = new FFmpeg();
         let isLoaded = false;
@@ -518,41 +518,86 @@
             }
         };
 
-        // Resolution and Orientation mapping helper
         const getCanvasDimensions = (orientation, resChoice) => {
             const height = parseInt(resChoice, 10);
             let width = Math.round((height * 16) / 9);
-            // Ensure dimensions are even numbers for H.264
             if (width % 2 !== 0) width += 1;
 
             if (orientation === 'horizontal') {
                 return { width, height };
             } else {
-                // Vertical 9:16
                 return { width: height, height: width };
             }
         };
 
-        // Load FFmpeg 0.12 with proper Blob URLs
+        // --- FOREVER CACHE ENGINE (Local Disk Storage) ---
+        const getCachedFFmpegAsset = async (url, mimeType, assetName) => {
+            const cacheName = 'cookieclip-ffmpeg-v0126';
+            let cache = null;
+            try {
+                cache = await caches.open(cacheName);
+                const cachedMatch = await cache.match(url);
+                if (cachedMatch) {
+                    const blob = await cachedMatch.blob();
+                    return URL.createObjectURL(new Blob([blob], { type: mimeType }));
+                }
+            } catch (e) {
+                console.warn('CacheStorage access warning:', e);
+            }
+
+            message.innerText = `⚡ Downloading ${assetName} to local cache (one-time only)...`;
+            
+            // Fast multi-CDN fallback
+            let response = null;
+            try {
+                response = await fetch(url);
+            } catch(e) {
+                // Secondary fallback endpoint
+                const fallbackUrl = url.includes('jsdelivr') 
+                    ? url.replace('https://cdn.jsdelivr.net/npm', 'https://unpkg.com')
+                    : url.replace('https://unpkg.com', 'https://cdn.jsdelivr.net/npm');
+                response = await fetch(fallbackUrl);
+            }
+
+            if (!response || !response.ok) {
+                throw new Error(`Failed to download ${assetName}`);
+            }
+
+            if (cache) {
+                try {
+                    await cache.put(url, response.clone());
+                } catch(e) {}
+            }
+
+            const blob = await response.blob();
+            return URL.createObjectURL(new Blob([blob], { type: mimeType }));
+        };
+
+        // Load FFmpeg 0.12 with forever-cached Blob URLs
         const loadFFmpeg = async () => {
             try {
                 ffmpeg.on('progress', ({ progress }) => {
                     progressBar.value = Math.max(0, Math.min(100, Math.round(progress * 100)));
                 });
 
-                const baseURL = 'https://unpkg.com/@ffmpeg/core@0.12.6/dist/esm';
-                await ffmpeg.load({
-                    coreURL: await toBlobURL(`${baseURL}/ffmpeg-core.js`, 'text/javascript'),
-                    wasmURL: await toBlobURL(`${baseURL}/ffmpeg-core.wasm`, 'application/wasm')
-                });
+                // Fast US edge endpoints (jsDelivr via Fastly/Cloudflare)
+                const baseURL = 'https://cdn.jsdelivr.net/npm/@ffmpeg/core@0.12.6/dist/esm';
+                
+                const [coreURL, wasmURL] = await Promise.all([
+                    getCachedFFmpegAsset(`${baseURL}/ffmpeg-core.js`, 'text/javascript', 'FFmpeg Core JS'),
+                    getCachedFFmpegAsset(`${baseURL}/ffmpeg-core.wasm`, 'application/wasm', 'FFmpeg WebAssembly Binary')
+                ]);
+
+                message.innerText = "Loading engine from local RAM...";
+                await ffmpeg.load({ coreURL, wasmURL });
 
                 isLoaded = true;
-                message.innerText = "✅ FFmpeg Engine Ready.";
+                message.innerText = "✅ FFmpeg Engine Ready (Instant Cache Active).";
                 message.style.color = "#059669";
                 updateButtonStates();
             } catch (err) {
                 console.error("FFmpeg Engine Load Failure:", err);
-                message.innerText = "⚠️ Engine loading. If this persists, do a hard refresh (Ctrl+Shift+R / Cmd+Shift+R).";
+                message.innerText = "⚠️ Failed to initialize engine: " + err.message;
                 message.style.color = "#b91c1c";
             }
         };
@@ -741,7 +786,6 @@
                 let filterSteps = [];
                 let concatInputs = "";
 
-                // Write video files and build per-stream scaler & letterbox/pillarbox padder
                 for (let i = 0; i < count; i++) {
                     const dur = await getVideoDuration(mergeFiles[i]);
                     totalMergedDuration += dur;
@@ -750,7 +794,6 @@
                     await ffmpeg.writeFile(filename, await fetchFile(mergeFiles[i]));
                     inputArgs.push('-i', filename);
 
-                    // Robust proportional scaler with black centering padding
                     filterSteps.push(
                         `[${i}:v]scale=${targetW}:${targetH}:force_original_aspect_ratio=decrease,pad=${targetW}:${targetH}:(ow-iw)/2:(oh-ih)/2:black,setsar=1,fps=30[v${i}]`
                     );
@@ -817,7 +860,6 @@
                 mergeBtn.disabled = false;
                 statusText.innerText = "Done! All clips merged cleanly. Click button to download.";
 
-                // Cleanup virtual filesystem
                 for (let i = 0; i < count; i++) {
                     try { await ffmpeg.deleteFile(`clip_${i}.mov`); } catch(e) {}
                 }
