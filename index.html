@@ -4,11 +4,6 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>CookieClip Combine & Compress</title>
-    <script>
-        if ('serviceWorker' in navigator && window.location.protocol.startsWith('http')) {
-            navigator.serviceWorker.register('coi-serviceworker.js').catch(() => {});
-        }
-    </script>
     <script src="https://unpkg.com/@ffmpeg/ffmpeg@0.11.6/dist/ffmpeg.min.js"></script>
     <style>
         body {
@@ -398,9 +393,10 @@
     <script>
         const { createFFmpeg, fetchFile } = FFmpeg;
         
+        // Use core-st (Single-Threaded build without SharedArrayBuffer requirements)
         const ffmpeg = createFFmpeg({
-            log: true,
-            corePath: 'https://unpkg.com/@ffmpeg/core@0.11.0/dist/ffmpeg-core.js'
+            log: false,
+            corePath: 'https://unpkg.com/@ffmpeg/core-st@0.11.1/dist/ffmpeg-core.js'
         });
 
         let isLoaded = false;
@@ -686,7 +682,7 @@
             document.body.removeChild(a);
         };
 
-        // --- MERGE BUTTON (Universal Orientation & Stream Scaling Filter) ---
+        // --- MERGE BUTTON ---
         mergeBtn.addEventListener('click', async () => {
             if (mergedVideoBlobUrl) {
                 triggerDownload(mergedVideoBlobUrl, mergedVideoFilename);
@@ -713,7 +709,6 @@
                 let filterSteps = [];
                 let concatInputs = "";
 
-                // Write video files and build per-stream scaler & audio normalizer
                 for (let i = 0; i < count; i++) {
                     const dur = await getVideoDuration(mergeFiles[i]);
                     totalMergedDuration += dur;
@@ -722,12 +717,10 @@
                     ffmpeg.FS('writeFile', filename, await fetchFile(mergeFiles[i]));
                     inputArgs.push('-i', filename);
 
-                    // 1. Scale with letterbox/pillarbox to exact canvas and standard FPS
                     filterSteps.push(
                         `[${i}:v]scale=${targetWidth}:${targetHeight}:force_original_aspect_ratio=decrease,pad=${targetWidth}:${targetHeight}:(ow-iw)/2:(oh-ih)/2:black,setsar=1,fps=30[v${i}]`
                     );
 
-                    // 2. Audio normalization (fallback to silent audio if stream lacks audio)
                     filterSteps.push(
                         `[${i}:a]aformat=sample_rates=44100:channel_layouts=stereo[a${i}]`
                     );
@@ -739,7 +732,6 @@
                 let finalMapArgs = ['-map', '[vjoined]'];
 
                 if (audioMode === 'mute') {
-                    // Mute output entirely
                     finalMapArgs.push('-an');
                 } else if ((audioMode === 'mute_and_add' || audioMode === 'add_music') && mergeAudioFile) {
                     ffmpeg.FS('writeFile', 'merge_bg.mp3', await fetchFile(mergeAudioFile));
@@ -759,7 +751,6 @@
                     if (audioMode === 'mute_and_add') {
                         finalMapArgs.push('-map', '[bgmusic]');
                     } else {
-                        // Mix original audio + background music
                         filterSteps.push(`[ajoined][bgmusic]amix=inputs=2:duration=first:dropout_transition=2[a_mixed]`);
                         finalMapArgs.push('-map', '[a_mixed]');
                     }
@@ -792,7 +783,6 @@
                 mergeBtn.disabled = false;
                 statusText.innerText = "Done! All clips merged cleanly. Click button to download.";
 
-                // Cleanup virtual filesystem
                 for (let i = 0; i < count; i++) {
                     try { ffmpeg.FS('unlink', `clip_${i}.mov`); } catch(e) {}
                 }
