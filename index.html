@@ -1,28 +1,10 @@
-The root cause of this error is that `@ffmpeg/core` multi-threaded WebAssembly **strictly requires `SharedArrayBuffer**`, which modern browsers completely disable on static hosts like GitHub Pages unless Cross-Origin Isolation (`window.crossOriginIsolated === true`) is active.
-
-If `coi-serviceworker.js` takes a second to register or encounters browser security restrictions, the multi-threaded build throws a fatal error and halts the entire app.
-
-### The Permanent Solution: Robust Auto-Fallback Architecture
-
-To ensure this **never blocks or fails on GitHub Pages again**, we configure the loader to:
-
-1. First check for Cross-Origin Isolation (`window.crossOriginIsolated`).
-2. Attempt multi-threaded FFmpeg if isolation is ready.
-3. **Automatically fallback** to the single-threaded standalone engine (`@ffmpeg/core-st` or standard single-threaded WASM) if isolation/headers fail.
-4. Catch all initialization promises cleanly without getting stuck in a blocked error loop.
-
----
-
-### Replace your entire `index.html` with this updated code:
-
-```html
 <!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>CookieClip Combine & Compress</title>
-    <script src="coi-serviceworker.js"></script>
+    <script src="https://unpkg.com/@ffmpeg/ffmpeg@0.11.6/dist/ffmpeg.min.js"></script>
     <style>
         body {
             font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
@@ -229,7 +211,7 @@ To ensure this **never blocks or fails on GitHub Pages again**, we configure the
         <div class="ephemeral-alert">
             ⚠️ <strong>Heads Up:</strong> Download your finished videos immediately! No history or files are retained. Everything permanently self-deletes once you close or refresh this tab.
         </div>
-        <p id="message">Initializing FFmpeg Engine...</p>
+        <p id="message">Loading FFmpeg engine...</p>
         <div id="progress-container">
             <p id="status-text">Processing...</p>
             <progress id="progress-bar" value="0" max="100"></progress>
@@ -293,11 +275,15 @@ To ensure this **never blocks or fails on GitHub Pages again**, we configure the
         <button id="compress-btn" class="action-btn" disabled>Compress & Trim</button>
     </div>
 
-    <script type="module">
-        import { FFmpeg } from 'https://unpkg.com/@ffmpeg/ffmpeg@0.12.10/dist/esm/index.js';
-        import { fetchFile, toBlobURL } from 'https://unpkg.com/@ffmpeg/util@0.12.1/dist/esm/index.js';
+    <script>
+        const { createFFmpeg, fetchFile } = FFmpeg;
+        
+        // Single-threaded compatible core that runs everywhere without special server headers
+        const ffmpeg = createFFmpeg({
+            log: false,
+            corePath: 'https://unpkg.com/@ffmpeg/core@0.11.0/dist/ffmpeg-core.js'
+        });
 
-        let ffmpeg = null;
         let isLoaded = false;
         let currentObjectUrl = null;
         let mergeFiles = [];
@@ -342,61 +328,27 @@ To ensure this **never blocks or fails on GitHub Pages again**, we configure the
             compressBtn.disabled = !singleCompressFile;
         };
 
-        // Resilient Multi-Strategy FFmpeg Initializer
+        // Initialize FFmpeg
         const initFFmpeg = async () => {
             try {
-                ffmpeg = new FFmpeg();
-                ffmpeg.on('progress', ({ progress }) => {
-                    progressBar.value = Math.max(0, Math.min(100, Math.round(progress * 100)));
+                ffmpeg.setProgress(({ ratio }) => {
+                    progressBar.value = Math.max(0, Math.min(100, Math.round(ratio * 100)));
                 });
 
-                // Primary Target: 0.12.6 core build via blob URLs
-                const baseURL = 'https://unpkg.com/@ffmpeg/core@0.12.6/dist/esm';
-                
-                // If the browser hasn't isolated the origin yet, give the service worker a grace moment
-                if (!window.crossOriginIsolated && navigator.serviceWorker && !sessionStorage.getItem('coiReloadedBySelf')) {
-                    message.innerText = "Configuring secure sandbox environment...";
-                }
-
-                await ffmpeg.load({
-                    coreURL: await toBlobURL(`${baseURL}/ffmpeg-core.js`, 'text/javascript'),
-                    wasmURL: await toBlobURL(`${baseURL}/ffmpeg-core.wasm`, 'application/wasm')
-                });
+                await ffmpeg.load();
 
                 isLoaded = true;
                 message.innerText = "✅ FFmpeg Engine Ready.";
                 message.style.color = "#059669";
                 updateButtonStates();
             } catch (err) {
-                console.warn("Standard multi-threaded load attempted. Retrying with fallback...", err);
-                
-                try {
-                    // Fallback Target: Compatible Core Engine
-                    const fallbackURL = 'https://cdn.jsdelivr.net/npm/@ffmpeg/core@0.12.6/dist/esm';
-                    await ffmpeg.load({
-                        coreURL: await toBlobURL(`${fallbackURL}/ffmpeg-core.js`, 'text/javascript'),
-                        wasmURL: await toBlobURL(`${fallbackURL}/ffmpeg-core.wasm`, 'application/wasm')
-                    });
-
-                    isLoaded = true;
-                    message.innerText = "✅ FFmpeg Engine Ready (Fallback Mode).";
-                    message.style.color = "#059669";
-                    updateButtonStates();
-                } catch (fallbackErr) {
-                    console.error("All FFmpeg load attempts failed:", fallbackErr);
-                    // Automatic one-time self-healing refresh for Service Worker activation
-                    if (!sessionStorage.getItem("ffmpegAutoReloaded")) {
-                        sessionStorage.setItem("ffmpegAutoReloaded", "true");
-                        window.location.reload();
-                        return;
-                    }
-                    message.innerText = "⚠️ Engine loading. Please hard-refresh (Ctrl+Shift+R or Cmd+Shift+R).";
-                    message.style.color = "#b91c1c";
-                }
+                console.error("FFmpeg Load Error:", err);
+                message.innerText = "⚠️ Failed to load FFmpeg engine: " + err.message;
+                message.style.color = "#b91c1c";
             }
         };
 
-        // File Drag & Drop Helper
+        // Drag & Drop helper
         const setupDropZone = (dropZone, uploader, handleFiles) => {
             dropZone.addEventListener('click', () => uploader.click());
             dropZone.addEventListener('dragover', (e) => {
@@ -506,20 +458,20 @@ To ensure this **never blocks or fails on GitHub Pages again**, we configure the
 
                 for (let i = 0; i < mergeFiles.length; i++) {
                     const inputName = `input_${i}.mp4`;
-                    await ffmpeg.writeFile(inputName, await fetchFile(mergeFiles[i]));
+                    ffmpeg.FS('writeFile', inputName, await fetchFile(mergeFiles[i]));
                     const tsName = `temp_${i}.ts`;
-                    await ffmpeg.exec(['-i', inputName, '-c', 'copy', '-bsf:v', 'h264_mp4toannexb', '-f', 'mpegts', tsName]);
+                    await ffmpeg.run('-i', inputName, '-c', 'copy', '-bsf:v', 'h264_mp4toannexb', '-f', 'mpegts', tsName);
                     concatListContent += (i === 0 ? '' : '|') + tsName;
                 }
 
-                await ffmpeg.exec([
+                await ffmpeg.run(
                     '-i', `concat:${concatListContent}`,
                     '-c', 'copy',
                     '-bsf:a', 'aac_adtstoasc',
                     outputName
-                ]);
+                );
 
-                const data = await ffmpeg.readFile(outputName);
+                const data = ffmpeg.FS('readFile', outputName);
                 if (currentObjectUrl) URL.revokeObjectURL(currentObjectUrl);
                 currentObjectUrl = URL.createObjectURL(new Blob([data.buffer], { type: `video/${outExt}` }));
 
@@ -529,13 +481,14 @@ To ensure this **never blocks or fails on GitHub Pages again**, we configure the
                 downloadBox.style.display = 'block';
                 statusText.innerText = "Done! Download immediately.";
 
+                // Cleanup virtual filesystem
                 for (let i = 0; i < mergeFiles.length; i++) {
                     try {
-                        await ffmpeg.deleteFile(`input_${i}.mp4`);
-                        await ffmpeg.deleteFile(`temp_${i}.ts`);
+                        ffmpeg.FS('unlink', `input_${i}.mp4`);
+                        ffmpeg.FS('unlink', `temp_${i}.ts`);
                     } catch(e) {}
                 }
-                await ffmpeg.deleteFile(outputName);
+                ffmpeg.FS('unlink', outputName);
 
             } catch (err) {
                 alert("An error occurred during merging: " + err.message);
@@ -559,17 +512,16 @@ To ensure this **never blocks or fails on GitHub Pages again**, we configure the
                 const outputName = `compressed_output.${outExt}`;
                 const inputName = 'input_compress.mp4';
                 
-                await ffmpeg.writeFile(inputName, await fetchFile(singleCompressFile));
+                ffmpeg.FS('writeFile', inputName, await fetchFile(singleCompressFile));
                 const duration = await getVideoDuration(singleCompressFile);
 
                 const trimStart = parseFloat(trimStartInput.value) || 0;
                 const trimEnd = parseFloat(trimEndInput.value) || 0;
                 const targetDuration = Math.max(0.1, duration - trimStart - trimEnd);
 
-                const args = ['-ss', trimStart.toString(), '-i', inputName, '-t', targetDuration.toString(), '-vcodec', 'libx264', '-crf', '28', outputName];
-                await ffmpeg.exec(args);
+                await ffmpeg.run('-ss', trimStart.toString(), '-i', inputName, '-t', targetDuration.toString(), '-vcodec', 'libx264', '-crf', '28', outputName);
 
-                const data = await ffmpeg.readFile(outputName);
+                const data = ffmpeg.FS('readFile', outputName);
                 if (currentObjectUrl) URL.revokeObjectURL(currentObjectUrl);
                 currentObjectUrl = URL.createObjectURL(new Blob([data.buffer], { type: `video/${outExt}` }));
 
@@ -580,8 +532,8 @@ To ensure this **never blocks or fails on GitHub Pages again**, we configure the
                 statusText.innerText = "Done! Download immediately.";
 
                 try {
-                    await ffmpeg.deleteFile(inputName);
-                    await ffmpeg.deleteFile(outputName);
+                    ffmpeg.FS('unlink', inputName);
+                    ffmpeg.FS('unlink', outputName);
                 } catch(e) {}
 
             } catch (err) {
@@ -592,9 +544,8 @@ To ensure this **never blocks or fails on GitHub Pages again**, we configure the
             }
         });
 
+        // Start initialization immediately
         initFFmpeg();
     </script>
 </body>
 </html>
-
-```
