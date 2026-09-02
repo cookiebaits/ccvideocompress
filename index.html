@@ -11,22 +11,29 @@
             font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
             background-color: #f9fafb;
             color: #111827;
-            max-width: 650px;
-            margin: 30px auto;
-            padding: 20px;
+            max-width: 1150px;
+            margin: 20px auto;
+            padding: 15px;
             text-align: center;
         }
+        
         .card {
             background: white;
-            padding: 25px;
+            padding: 22px;
             border-radius: 12px;
-            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.08);
-            margin-bottom: 25px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.06);
+            margin-bottom: 20px;
             text-align: left;
         }
-        .header-card { text-align: center; }
-        h2 { margin-top: 5px; margin-bottom: 8px; }
-        p.subtitle { margin-top: 0; color: #6b7280; font-size: 14px; }
+
+        .header-card { 
+            text-align: center; 
+            padding: 20px 25px;
+        }
+
+        h2 { margin-top: 5px; margin-bottom: 6px; font-size: 24px; }
+        h3 { margin-top: 0; margin-bottom: 6px; font-size: 18px; }
+        p.subtitle { margin-top: 0; color: #6b7280; font-size: 13px; }
         
         .security-badge {
             font-size: 12px;
@@ -35,81 +42,119 @@
             padding: 4px 10px;
             border-radius: 12px;
             display: inline-block;
-            margin-bottom: 10px;
+            margin-bottom: 8px;
             font-weight: 500;
         }
+
         .ephemeral-alert {
             background-color: #fffbeb;
             border-left: 4px solid #f59e0b;
             color: #92400e;
-            padding: 10px 14px;
-            font-size: 13px;
+            padding: 8px 14px;
+            font-size: 12px;
             border-radius: 4px;
-            margin-bottom: 15px;
+            margin-top: 8px;
             line-height: 1.4;
         }
+
+        /* High-Visibility Progress Banner */
+        #progress-container {
+            margin-top: 15px;
+            display: none;
+            background: #eff6ff;
+            border: 1px solid #bfdbfe;
+            border-radius: 8px;
+            padding: 14px 18px;
+            box-shadow: 0 2px 6px rgba(59, 130, 246, 0.12);
+            text-align: center;
+        }
+        #status-text {
+            margin: 0 0 8px 0;
+            font-size: 14px;
+            font-weight: 700;
+            color: #1d4ed8;
+            letter-spacing: 0.2px;
+        }
+        #processing-progress {
+            width: 100%;
+            height: 14px;
+            border-radius: 7px;
+            overflow: hidden;
+            accent-color: #2563eb;
+        }
+
+        /* 2-Column Side-by-Side Grid */
+        .tools-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 20px;
+            align-items: start;
+        }
+
+        @media (max-width: 860px) {
+            .tools-grid {
+                grid-template-columns: 1fr;
+            }
+        }
+
         .drop-zone {
             border: 2px dashed #d1d5db;
             border-radius: 8px;
-            padding: 20px 15px;
+            padding: 16px 12px;
             text-align: center;
             cursor: pointer;
             background-color: #fafafa;
             transition: all 0.2s ease;
-            margin-bottom: 15px;
+            margin-bottom: 12px;
         }
         .drop-zone:hover { border-color: #9ca3af; background-color: #f3f4f6; }
         .drop-zone.dragover { background-color: #eff6ff; border-color: #3b82f6; }
-        .drop-zone p { margin: 0; font-size: 14px; color: #4b5563; }
-        .drop-zone span.sub-text { font-size: 12px; color: #9ca3af; }
+        .drop-zone p { margin: 0; font-size: 13px; color: #4b5563; }
+        .drop-zone span.sub-text { font-size: 11px; color: #9ca3af; }
         
-        .clip-list { list-style: none; padding: 0; margin: 0 0 15px 0; }
+        .clip-list { list-style: none; padding: 0; margin: 0 0 12px 0; max-height: 220px; overflow-y: auto; }
         .clip-item {
             display: flex; align-items: center; justify-content: space-between;
-            background: #f3f4f6; padding: 8px 12px; border-radius: 6px; margin-bottom: 6px; font-size: 13px;
+            background: #f3f4f6; padding: 6px 10px; border-radius: 6px; margin-bottom: 5px; font-size: 12px;
         }
-        .clip-item .clip-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 320px; font-weight: 500; }
-        .clip-actions { display: flex; gap: 4px; }
+        .clip-item .clip-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 250px; font-weight: 500; }
+        .clip-actions { display: flex; gap: 3px; }
         .clip-btn {
-            background: #e5e7eb; border: none; border-radius: 4px; padding: 4px 8px; cursor: pointer; font-size: 11px; color: #374151;
+            background: #e5e7eb; border: none; border-radius: 4px; padding: 3px 6px; cursor: pointer; font-size: 10px; color: #374151;
         }
         .clip-btn:hover { background: #d1d5db; }
         .clip-btn.delete:hover { background: #fecaca; color: #dc2626; }
 
         .control-row {
-            display: flex; align-items: center; justify-content: space-between; background: #f3f4f6; padding: 10px 14px; border-radius: 6px; margin-bottom: 12px; font-size: 14px; font-weight: 500;
+            display: flex; align-items: center; justify-content: space-between; background: #f3f4f6; padding: 8px 12px; border-radius: 6px; margin-bottom: 10px; font-size: 13px; font-weight: 500;
         }
-        .auto-hint { font-size: 11px; color: #059669; font-weight: 600; margin-left: 6px; }
-        select { padding: 6px 12px; border-radius: 4px; border: 1px solid #d1d5db; font-size: 14px; max-width: 60%; }
+        .auto-hint { font-size: 11px; color: #059669; font-weight: 600; margin-left: 4px; }
+        select { padding: 5px 10px; border-radius: 4px; border: 1px solid #d1d5db; font-size: 13px; max-width: 55%; background: white; }
         
         .audio-upload-wrapper {
-            display: none; background: #f8fafc; border: 1px solid #e2e8f0; padding: 14px; border-radius: 8px; margin-bottom: 15px;
+            display: none; background: #f8fafc; border: 1px solid #e2e8f0; padding: 12px; border-radius: 8px; margin-bottom: 12px;
         }
-        .music-settings { display: flex; flex-direction: column; gap: 10px; margin-top: 10px; font-size: 13px; }
-        .checkbox-label { display: flex; align-items: center; gap: 8px; cursor: pointer; font-weight: 500; }
-        .fade-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 5px; padding-left: 24px; }
-        .fade-input-group { display: flex; flex-direction: column; gap: 4px; }
-        .fade-input-group label { font-size: 12px; color: #4b5563; }
-        .fade-input-group input { padding: 6px 8px; border: 1px solid #d1d5db; border-radius: 4px; font-size: 13px; }
+        .music-settings { display: flex; flex-direction: column; gap: 8px; margin-top: 8px; font-size: 12px; }
+        .checkbox-label { display: flex; align-items: center; gap: 6px; cursor: pointer; font-weight: 500; }
+        .fade-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 4px; padding-left: 20px; }
+        .fade-input-group { display: flex; flex-direction: column; gap: 3px; }
+        .fade-input-group label { font-size: 11px; color: #4b5563; }
+        .fade-input-group input { padding: 5px 6px; border: 1px solid #d1d5db; border-radius: 4px; font-size: 12px; }
 
         .trim-controls {
-            display: flex; justify-content: space-between; gap: 15px; margin-bottom: 15px; background: #f3f4f6; padding: 15px; border-radius: 8px;
+            display: flex; justify-content: space-between; gap: 10px; margin-bottom: 10px; background: #f3f4f6; padding: 10px 12px; border-radius: 8px;
         }
-        .trim-controls label { display: flex; flex-direction: column; font-size: 14px; font-weight: 500; width: 100%; }
-        .trim-controls input { margin-top: 5px; padding: 8px; border: 1px solid #d1d5db; border-radius: 4px; font-size: 16px; }
+        .trim-controls label { display: flex; flex-direction: column; font-size: 12px; font-weight: 500; width: 100%; }
+        .trim-controls input { margin-top: 4px; padding: 6px; border: 1px solid #d1d5db; border-radius: 4px; font-size: 14px; }
         input[type="file"] { display: none; }
         
         .action-btn {
-            background-color: #ff0000; color: white; border: none; padding: 12px 24px; border-radius: 6px; font-size: 16px; cursor: pointer; font-weight: bold; transition: background 0.2s; width: 100%;
+            background-color: #ff0000; color: white; border: none; padding: 12px 18px; border-radius: 6px; font-size: 15px; cursor: pointer; font-weight: bold; transition: background 0.2s; width: 100%; margin-top: 5px;
         }
         .action-btn:hover:not(:disabled) { background-color: #cc0000; }
         .action-btn:disabled { background-color: #ccc; cursor: not-allowed; }
         .action-btn.ready-download { background-color: #059669; }
         .action-btn.ready-download:hover { background-color: #047857; }
-        
-        #progress-container { margin-top: 20px; display: none; text-align: center; }
-        #processing-progress { width: 100%; height: 18px; }
-        #status-text { margin-bottom: 5px; font-size: 14px; color: #4b5563; font-weight: 500; }
         
         #render-canvas { display: none; }
     </style>
@@ -118,177 +163,184 @@
 
     <canvas id="render-canvas"></canvas>
 
+    <!-- Header Section -->
     <div class="card header-card">
         <span class="security-badge">🔒 Hardware Accelerated & Offline in RAM. Zero Server Uploads.</span>
         <h2>CookieClip Combine & Compress</h2>
         <p class="subtitle">Merge, compress, customize audio, and trim clips locally without browser freezes.</p>
 
-        <div class="ephemeral-alert">
-            ⚠️ <strong>Heads Up:</strong> Download your finished files immediately! No history is retained. Everything permanently self-deletes once you close or refresh this tab.
-        </div>
-
+        <!-- Progress Indicator with High Visibility -->
         <div id="progress-container">
             <p id="status-text">Processing...</p>
             <progress id="processing-progress" value="0" max="100"></progress>
         </div>
+
+        <div class="ephemeral-alert">
+            ⚠️ <strong>Heads Up:</strong> Download your finished files immediately! No history is retained. Everything permanently self-deletes once you close or refresh this tab.
+        </div>
     </div>
 
-    <!-- 1. MERGE CLIPS -->
-    <div class="card">
-        <h3>1. Clip Merger</h3>
-        <p class="subtitle">Combine up to 10 clips with automatic orientation centering and scaling.</p>
+    <!-- Side-by-Side Tools Grid -->
+    <div class="tools-grid">
 
-        <div class="drop-zone" id="merge-drop-zone">
-            <p>📂 Drag & Drop up to 10 videos here or <strong>browse</strong></p>
-            <span class="sub-text">Auto-sorts 1a, 1b, 1c... | Supports mixed horizontal & vertical clips</span>
-            <input type="file" id="merge-uploader" accept="video/*" multiple>
-        </div>
+        <!-- 1. MERGE CLIPS -->
+        <div class="card">
+            <h3>1. Clip Merger</h3>
+            <p class="subtitle">Combine up to 10 clips with automatic orientation centering and scaling.</p>
 
-        <ul class="clip-list" id="merge-list"></ul>
-
-        <!-- Orientation Selector -->
-        <div class="control-row">
-            <label for="merge-orientation">
-                Output Orientation:
-                <span id="orientation-auto-badge" class="auto-hint"></span>
-            </label>
-            <select id="merge-orientation">
-                <option value="horizontal">Landscape / Horizontal (16:9)</option>
-                <option value="vertical">Portrait / Vertical / Shorts (9:16)</option>
-            </select>
-        </div>
-
-        <!-- Target Resolution Selector (Auto-Configured) -->
-        <div class="control-row">
-            <label for="merge-resolution">
-                Target Resolution:
-                <span id="res-auto-badge" class="auto-hint"></span>
-            </label>
-            <select id="merge-resolution">
-                <option value="480">480p (SD)</option>
-                <option value="720">720p (HD)</option>
-                <option value="1080" selected>1080p (Full HD)</option>
-                <option value="1440">2K (1440p QHD)</option>
-                <option value="2160">4K (2160p UHD)</option>
-            </select>
-        </div>
-
-        <!-- Audio Mode Selector -->
-        <div class="control-row">
-            <label for="merge-audio-mode">Audio Mode:</label>
-            <select id="merge-audio-mode">
-                <option value="original">Keep Original Audio</option>
-                <option value="mute">Mute Output Video</option>
-                <option value="add_music">Add Custom Background Music</option>
-                <option value="mute_and_add">Mute & Replace with Custom Music</option>
-            </select>
-        </div>
-
-        <div class="audio-upload-wrapper" id="merge-audio-wrapper">
-            <div class="drop-zone" id="merge-audio-drop-zone" style="margin-bottom: 8px;">
-                <p id="merge-audio-label">🎵 Click / Drag background music file (.mp3, .wav, .aac)</p>
-                <input type="file" id="merge-audio-uploader" accept="audio/*">
+            <div class="drop-zone" id="merge-drop-zone">
+                <p>📂 Drag & Drop up to 10 videos here or <strong>browse</strong></p>
+                <span class="sub-text">Auto-sorts 1a, 1b, 1c... | Supports mixed horizontal & vertical clips</span>
+                <input type="file" id="merge-uploader" accept="video/*" multiple>
             </div>
 
-            <div class="music-settings">
-                <label class="checkbox-label">
-                    <input type="checkbox" id="merge-loop-music" checked> Loop music if video is longer
+            <ul class="clip-list" id="merge-list"></ul>
+
+            <!-- Orientation Selector -->
+            <div class="control-row">
+                <label for="merge-orientation">
+                    Output Orientation:
+                    <span id="orientation-auto-badge" class="auto-hint"></span>
                 </label>
-                <label class="checkbox-label">
-                    <input type="checkbox" id="merge-fade-music" checked> Enable smooth Fade In & Out
+                <select id="merge-orientation">
+                    <option value="horizontal">Landscape / Horizontal (16:9)</option>
+                    <option value="vertical">Portrait / Vertical / Shorts (9:16)</option>
+                </select>
+            </div>
+
+            <!-- Target Resolution Selector -->
+            <div class="control-row">
+                <label for="merge-resolution">
+                    Target Resolution:
+                    <span id="res-auto-badge" class="auto-hint"></span>
                 </label>
-                <div class="fade-grid" id="merge-fade-controls">
-                    <div class="fade-input-group">
-                        <label for="merge-fade-in">Fade In (sec):</label>
-                        <input type="number" id="merge-fade-in" value="2.0" min="0.1" step="0.5">
-                    </div>
-                    <div class="fade-input-group">
-                        <label for="merge-fade-out">Fade Out (sec):</label>
-                        <input type="number" id="merge-fade-out" value="3.0" min="0.1" step="0.5">
+                <select id="merge-resolution">
+                    <option value="480">480p (SD)</option>
+                    <option value="720">720p (HD)</option>
+                    <option value="1080" selected>1080p (Full HD)</option>
+                    <option value="1440">2K (1440p QHD)</option>
+                    <option value="2160">4K (2160p UHD)</option>
+                </select>
+            </div>
+
+            <!-- Audio Mode Selector -->
+            <div class="control-row">
+                <label for="merge-audio-mode">Audio Mode:</label>
+                <select id="merge-audio-mode">
+                    <option value="original">Keep Original Audio</option>
+                    <option value="mute">Mute Output Video</option>
+                    <option value="add_music">Add Custom Background Music</option>
+                    <option value="mute_and_add">Mute & Replace with Custom Music</option>
+                </select>
+            </div>
+
+            <div class="audio-upload-wrapper" id="merge-audio-wrapper">
+                <div class="drop-zone" id="merge-audio-drop-zone" style="margin-bottom: 8px;">
+                    <p id="merge-audio-label">🎵 Click / Drag background music file (.mp3, .wav, .aac)</p>
+                    <input type="file" id="merge-audio-uploader" accept="audio/*">
+                </div>
+
+                <div class="music-settings">
+                    <label class="checkbox-label">
+                        <input type="checkbox" id="merge-loop-music" checked> Loop music if video is longer
+                    </label>
+                    <label class="checkbox-label">
+                        <input type="checkbox" id="merge-fade-music" checked> Enable smooth Fade In & Out
+                    </label>
+                    <div class="fade-grid" id="merge-fade-controls">
+                        <div class="fade-input-group">
+                            <label for="merge-fade-in">Fade In (sec):</label>
+                            <input type="number" id="merge-fade-in" value="2.0" min="0.1" step="0.5">
+                        </div>
+                        <div class="fade-input-group">
+                            <label for="merge-fade-out">Fade Out (sec):</label>
+                            <input type="number" id="merge-fade-out" value="3.0" min="0.1" step="0.5">
+                        </div>
                     </div>
                 </div>
             </div>
-        </div>
 
-        <!-- Output Format Restricted to MP4 & MP3 -->
-        <div class="control-row">
-            <label for="merge-format">Output Format:</label>
-            <select id="merge-format">
-                <option value="mp4">MP4 Video (.mp4)</option>
-                <option value="mp3">MP3 Audio Extraction (.mp3)</option>
-            </select>
-        </div>
-
-        <button id="merge-btn" class="action-btn" disabled>Merge Clips</button>
-    </div>
-
-    <!-- 2. COMPRESS & TRIM -->
-    <div class="card">
-        <h3>2. Video Compressor & Trim</h3>
-        <p class="subtitle">Compress a single file, adjust audio, and trim timing.</p>
-
-        <div class="drop-zone" id="compress-drop-zone">
-            <p id="compress-filename">📂 Drag & Drop 1 video here or <strong>browse</strong></p>
-            <input type="file" id="compress-uploader" accept="video/*">
-        </div>
-
-        <div class="trim-controls">
-            <label>
-                Cut from Start (seconds)
-                <input type="number" id="trim-start" value="0" min="0" step="0.1">
-            </label>
-            <label>
-                Cut from End (seconds)
-                <input type="number" id="trim-end" value="0" min="0" step="0.1">
-            </label>
-        </div>
-
-        <div class="control-row">
-            <label for="compress-audio-mode">Audio Mode:</label>
-            <select id="compress-audio-mode">
-                <option value="original">Keep Original Audio</option>
-                <option value="mute">Mute Output Video</option>
-                <option value="add_music">Add Custom Background Music</option>
-                <option value="mute_and_add">Mute & Replace with Custom Music</option>
-            </select>
-        </div>
-
-        <div class="audio-upload-wrapper" id="compress-audio-wrapper">
-            <div class="drop-zone" id="compress-audio-drop-zone" style="margin-bottom: 8px;">
-                <p id="compress-audio-label">🎵 Click / Drag background music file (.mp3, .wav, .aac)</p>
-                <input type="file" id="compress-audio-uploader" accept="audio/*">
+            <!-- Output Format (MP4 or MP3 only) -->
+            <div class="control-row">
+                <label for="merge-format">Output Format:</label>
+                <select id="merge-format">
+                    <option value="mp4">MP4 Video (.mp4)</option>
+                    <option value="mp3">MP3 Audio Extraction (.mp3)</option>
+                </select>
             </div>
 
-            <div class="music-settings">
-                <label class="checkbox-label">
-                    <input type="checkbox" id="compress-loop-music" checked> Loop music if video is longer
+            <button id="merge-btn" class="action-btn" disabled>Merge Clips</button>
+        </div>
+
+        <!-- 2. COMPRESS & TRIM -->
+        <div class="card">
+            <h3>2. Video Compressor & Trim</h3>
+            <p class="subtitle">Compress a single file, adjust audio, and trim timing.</p>
+
+            <div class="drop-zone" id="compress-drop-zone">
+                <p id="compress-filename">📂 Drag & Drop 1 video here or <strong>browse</strong></p>
+                <input type="file" id="compress-uploader" accept="video/*">
+            </div>
+
+            <div class="trim-controls">
+                <label>
+                    Cut from Start (seconds)
+                    <input type="number" id="trim-start" value="0" min="0" step="0.1">
                 </label>
-                <label class="checkbox-label">
-                    <input type="checkbox" id="compress-fade-music" checked> Enable smooth Fade In & Out
+                <label>
+                    Cut from End (seconds)
+                    <input type="number" id="trim-end" value="0" min="0" step="0.1">
                 </label>
-                <div class="fade-grid" id="compress-fade-controls">
-                    <div class="fade-input-group">
-                        <label for="compress-fade-in">Fade In (sec):</label>
-                        <input type="number" id="compress-fade-in" value="2.0" min="0.1" step="0.5">
-                    </div>
-                    <div class="fade-input-group">
-                        <label for="compress-fade-out">Fade Out (sec):</label>
-                        <input type="number" id="compress-fade-out" value="3.0" min="0.1" step="0.5">
+            </div>
+
+            <div class="control-row">
+                <label for="compress-audio-mode">Audio Mode:</label>
+                <select id="compress-audio-mode">
+                    <option value="original">Keep Original Audio</option>
+                    <option value="mute">Mute Output Video</option>
+                    <option value="add_music">Add Custom Background Music</option>
+                    <option value="mute_and_add">Mute & Replace with Custom Music</option>
+                </select>
+            </div>
+
+            <div class="audio-upload-wrapper" id="compress-audio-wrapper">
+                <div class="drop-zone" id="compress-audio-drop-zone" style="margin-bottom: 8px;">
+                    <p id="compress-audio-label">🎵 Click / Drag background music file (.mp3, .wav, .aac)</p>
+                    <input type="file" id="compress-audio-uploader" accept="audio/*">
+                </div>
+
+                <div class="music-settings">
+                    <label class="checkbox-label">
+                        <input type="checkbox" id="compress-loop-music" checked> Loop music if video is longer
+                    </label>
+                    <label class="checkbox-label">
+                        <input type="checkbox" id="compress-fade-music" checked> Enable smooth Fade In & Out
+                    </label>
+                    <div class="fade-grid" id="compress-fade-controls">
+                        <div class="fade-input-group">
+                            <label for="compress-fade-in">Fade In (sec):</label>
+                            <input type="number" id="compress-fade-in" value="2.0" min="0.1" step="0.5">
+                        </div>
+                        <div class="fade-input-group">
+                            <label for="compress-fade-out">Fade Out (sec):</label>
+                            <input type="number" id="compress-fade-out" value="3.0" min="0.1" step="0.5">
+                        </div>
                     </div>
                 </div>
             </div>
+
+            <!-- Output Format (MP4 or MP3 only) -->
+            <div class="control-row">
+                <label for="compress-format">Output Format:</label>
+                <select id="compress-format">
+                    <option value="mp4">MP4 Video (.mp4)</option>
+                    <option value="mp3">MP3 Audio Extraction (.mp3)</option>
+                </select>
+            </div>
+
+            <button id="compress-btn" class="action-btn" disabled>Compress & Trim</button>
         </div>
 
-        <!-- Output Format Restricted to MP4 & MP3 -->
-        <div class="control-row">
-            <label for="compress-format">Output Format:</label>
-            <select id="compress-format">
-                <option value="mp4">MP4 Video (.mp4)</option>
-                <option value="mp3">MP3 Audio Extraction (.mp3)</option>
-            </select>
-        </div>
-
-        <button id="compress-btn" class="action-btn" disabled>Compress & Trim</button>
     </div>
 
     <script>
@@ -422,7 +474,6 @@
             });
         };
 
-        // Auto-configure optimal resolution & orientation based on uploaded clips
         const autoConfigureFromClips = async (files) => {
             if (!files || files.length === 0) return;
             const meta = await probeVideoMetadata(files[0]);
@@ -430,10 +481,10 @@
 
             if (meta.height > meta.width) {
                 mergeOrientation.value = 'vertical';
-                orientationAutoBadge.innerText = '(Auto: Portrait 9:16)';
+                orientationAutoBadge.innerText = '(Auto: 9:16)';
             } else {
                 mergeOrientation.value = 'horizontal';
-                orientationAutoBadge.innerText = '(Auto: Landscape 16:9)';
+                orientationAutoBadge.innerText = '(Auto: 16:9)';
             }
 
             const maxDim = Math.max(meta.width, meta.height);
@@ -617,7 +668,6 @@
         };
 
         // --- Core MP4 Duration & Random Access Indexer (Fixes Grayed-out Seekbar) ---
-        // Injects duration into mvhd/tkhd/mdhd and appends an ISO 'mfra' index table
         async function makeMp4Seekable(blob, durationSec) {
             const arrayBuffer = await blob.arrayBuffer();
             const data = new Uint8Array(arrayBuffer);
@@ -628,7 +678,6 @@
             let moovSize = 0;
             let movieTimescale = 1000;
 
-            // 1. Locate moov atom
             while (pos <= data.length - 8) {
                 let bSize = view.getUint32(pos);
                 const bType = String.fromCharCode(data[pos+4], data[pos+5], data[pos+6], data[pos+7]);
@@ -647,7 +696,6 @@
                 pos += bSize;
             }
 
-            // 2. Patch duration inside moov
             if (moovPos !== -1) {
                 function patchMoov(start, end) {
                     let p = start;
@@ -709,7 +757,6 @@
                 patchMoov(moovPos + 8, moovPos + moovSize);
             }
 
-            // 3. Scan moof boxes across file to build mfra index
             pos = 0;
             const trafs = {};
 
@@ -765,7 +812,6 @@
                 pos += bSize;
             }
 
-            // 4. Construct ISO mfra (Movie Fragment Random Access) box
             const trackIds = Object.keys(trafs);
             if (trackIds.length > 0) {
                 const tfraBuffers = [];
@@ -779,8 +825,8 @@
                     const tfraView = new DataView(tfraBuf.buffer);
 
                     tfraView.setUint32(0, tfraSize);
-                    tfraBuf.set([0x74, 0x66, 0x72, 0x61], 4); // 'tfra'
-                    tfraBuf[8] = 1; // version 1
+                    tfraBuf.set([0x74, 0x66, 0x72, 0x61], 4);
+                    tfraBuf[8] = 1;
                     tfraBuf[9] = 0; tfraBuf[10] = 0; tfraBuf[11] = 0;
                     tfraView.setUint32(12, tId);
                     tfraView.setUint32(16, 0);
@@ -804,14 +850,14 @@
                 const mfroBuf = new Uint8Array(16);
                 const mfroView = new DataView(mfroBuf.buffer);
                 mfroView.setUint32(0, 16);
-                mfroBuf.set([0x6d, 0x66, 0x72, 0x6f], 4); // 'mfro'
+                mfroBuf.set([0x6d, 0x66, 0x72, 0x6f], 4);
                 mfroView.setUint32(8, 0);
                 mfroView.setUint32(12, mfraTotalSize);
 
                 const mfraHeader = new Uint8Array(8);
                 const mfraHeaderView = new DataView(mfraHeader.buffer);
                 mfraHeaderView.setUint32(0, mfraTotalSize);
-                mfraHeader.set([0x6d, 0x66, 0x72, 0x61], 4); // 'mfra'
+                mfraHeader.set([0x6d, 0x66, 0x72, 0x61], 4);
 
                 return new Blob([data, mfraHeader, ...tfraBuffers, mfroBuf], { type: 'video/mp4' });
             }
@@ -827,7 +873,10 @@
             }
 
             if (mergeFiles.length < 2) return;
+            
+            // Show progress bar and smoothly scroll to the top
             progressContainer.style.display = 'block';
+            window.scrollTo({ top: 0, behavior: 'smooth' });
             processingProgress.value = 0;
             mergeBtn.disabled = true;
             mergeBtn.innerText = "Rendering...";
@@ -1059,7 +1108,6 @@
                 statusText.innerText = "Indexing MP4 file for seekable timeline...";
                 const rawVideoBlob = new Blob(recordedChunks, { type: 'video/mp4' });
 
-                // Make MP4 fully seekable by injecting duration and mfra index table
                 const seekableVideoBlob = await makeMp4Seekable(rawVideoBlob, calculatedTotalSec);
                 mergedBlobUrl = URL.createObjectURL(seekableVideoBlob);
                 mergedFilename = `merged_video_${resolution}p.mp4`;
@@ -1078,7 +1126,7 @@
             }
         });
 
-        // Core Compressor & Trimmer Engine
+        // --- Core Compressor & Trimmer Engine ---
         compressBtn.addEventListener('click', async () => {
             if (compressedBlobUrl) {
                 triggerDownload(compressedBlobUrl, compressedFilename);
@@ -1086,8 +1134,10 @@
             }
 
             if (!singleCompressFile) return;
+            
+            // Show progress bar and smoothly scroll to the top
             progressContainer.style.display = 'block';
-            statusText.innerText = "Processing compression & trim...";
+            window.scrollTo({ top: 0, behavior: 'smooth' });
             processingProgress.value = 0;
             compressBtn.disabled = true;
             compressBtn.innerText = "Compressing...";
@@ -1205,7 +1255,6 @@
                 statusText.innerText = "Indexing MP4 file for seekable timeline...";
                 const rawVideoBlob = new Blob(recordedChunks, { type: 'video/mp4' });
 
-                // Make compressed MP4 seekable
                 const seekableVideoBlob = await makeMp4Seekable(rawVideoBlob, targetDur);
                 compressedBlobUrl = URL.createObjectURL(seekableVideoBlob);
                 compressedFilename = `compressed_video.mp4`;
