@@ -110,7 +110,6 @@
         #processing-progress { width: 100%; height: 18px; }
         #status-text { margin-bottom: 5px; font-size: 14px; color: #4b5563; font-weight: 500; }
         
-        /* Off-screen rendering canvas */
         #render-canvas { display: none; }
     </style>
 </head>
@@ -295,7 +294,6 @@
         let compressedBlobUrl = null;
         let compressedFilename = "";
 
-        // UI Selectors
         const progressContainer = document.getElementById('progress-container');
         const processingProgress = document.getElementById('processing-progress');
         const statusText = document.getElementById('status-text');
@@ -415,7 +413,7 @@
             });
         };
 
-        // Automatically configure optimal resolution and orientation
+        // Auto-configure best resolution & orientation from first uploaded clip
         const autoConfigureFromClips = async (files) => {
             if (!files || files.length === 0) return;
             const meta = await probeVideoMetadata(files[0]);
@@ -578,7 +576,7 @@
             document.body.removeChild(a);
         };
 
-        // --- Fast Offline In-Browser MP3 Encoder ---
+        // Fast Offline In-Browser MP3 Encoder
         const encodeAudioBufferToMp3 = (audioBuffer) => {
             const channels = audioBuffer.numberOfChannels;
             const sampleRate = audioBuffer.sampleRate;
@@ -609,7 +607,7 @@
             return new Blob(mp3Data, { type: 'audio/mp3' });
         };
 
-        // --- Core Hardware-Accelerated Merger Engine ---
+        // Hardware-Accelerated Merger Engine
         mergeBtn.addEventListener('click', async () => {
             if (mergedBlobUrl) {
                 triggerDownload(mergedBlobUrl, mergedFilename);
@@ -628,17 +626,14 @@
             const audioMode = mergeAudioMode.value;
 
             try {
-                // Determine dimensions
                 const { width: targetW, height: targetH } = getDimensions(orientation, resolution);
                 renderCanvas.width = targetW;
                 renderCanvas.height = targetH;
 
-                // Web Audio Context setup
                 const AudioCtx = window.AudioContext || window.webkitAudioContext;
                 const audioCtx = new AudioCtx();
                 const destNode = audioCtx.createMediaStreamDestination();
 
-                // Optional Background Music Setup
                 let bgAudioBuffer = null;
                 if ((audioMode === 'add_music' || audioMode === 'mute_and_add') && mergeAudioFile) {
                     statusText.innerText = "Loading background audio...";
@@ -646,9 +641,9 @@
                     bgAudioBuffer = await audioCtx.decodeAudioData(bgArrayBuf);
                 }
 
-                // If user selected MP3 Extraction
+                // MP3 Audio Extraction
                 if (format === 'mp3') {
-                    statusText.innerText = "Extracting and mixing audio tracks to MP3...";
+                    statusText.innerText = "Extracting and mixing audio to MP3...";
                     processingProgress.value = 30;
 
                     let totalDuration = 0;
@@ -661,16 +656,13 @@
                             const buf = await audioCtx.decodeAudioData(arrayBuf);
                             decodedBuffers.push(buf);
                             totalDuration += buf.duration;
-                        } catch (e) {
-                            // Video might have no audio track, skip cleanly
-                        }
+                        } catch (e) {}
                     }
 
                     if (decodedBuffers.length === 0 && !bgAudioBuffer) {
                         throw new Error("No audio tracks found in selected videos to extract.");
                     }
 
-                    // Render mixed offline audio
                     const offlineCtx = new OfflineAudioContext(2, Math.max(1, Math.ceil(totalDuration * 44100)), 44100);
                     let offset = 0;
 
@@ -722,11 +714,10 @@
                     return;
                 }
 
-                // Video rendering pipeline using Native MediaStream & Hardware MediaRecorder
+                // MP4 Video Recording via Hardware MediaRecorder
                 statusText.innerText = "Preparing hardware canvas renderer...";
                 const stream = renderCanvas.captureStream(30);
 
-                // Attach audio to stream
                 if (audioMode !== 'mute') {
                     const audioTracks = destNode.stream.getAudioTracks();
                     if (audioTracks.length > 0) {
@@ -734,17 +725,10 @@
                     }
                 }
 
-                // Choose best MP4 codec supported by user's browser
                 let mimeType = 'video/mp4';
-                if (!MediaRecorder.isTypeSupported(mimeType)) {
-                    mimeType = 'video/mp4;codecs=avc1';
-                }
-                if (!MediaRecorder.isTypeSupported(mimeType)) {
-                    mimeType = 'video/mp4;codecs=avc1,mp4a.40.2';
-                }
-                if (!MediaRecorder.isTypeSupported(mimeType)) {
-                    mimeType = 'video/webm;codecs=h264'; // Fallback container if MP4 muxer is unavailable in Firefox
-                }
+                if (!MediaRecorder.isTypeSupported(mimeType)) mimeType = 'video/mp4;codecs=avc1';
+                if (!MediaRecorder.isTypeSupported(mimeType)) mimeType = 'video/mp4;codecs=avc1,mp4a.40.2';
+                if (!MediaRecorder.isTypeSupported(mimeType)) mimeType = 'video/webm;codecs=h264';
 
                 const recorder = new MediaRecorder(stream, {
                     mimeType: mimeType,
@@ -762,7 +746,6 @@
 
                 recorder.start(100);
 
-                // Background Music Player Node
                 let bgSource = null;
                 let bgGain = null;
                 if (bgAudioBuffer) {
@@ -780,7 +763,7 @@
                     bgSource.start();
                 }
 
-                // Play & Draw Clips Sequentially onto Canvas with Centered Black Bars
+                // Play & Draw Clips Sequentially with Centered Black Bars
                 for (let i = 0; i < mergeFiles.length; i++) {
                     const file = mergeFiles[i];
                     statusText.innerText = `Rendering clip ${i + 1} of ${mergeFiles.length} (${file.name})...`;
@@ -801,7 +784,6 @@
                         }
 
                         v.onloadedmetadata = () => {
-                            // Compute centered letterbox/pillarbox geometry
                             const vW = v.videoWidth;
                             const vH = v.videoHeight;
                             const vAspect = vW / vH;
@@ -820,7 +802,6 @@
                                 drawX = Math.round((targetW - drawW) / 2);
                             }
 
-                            // Render loop at 30 fps
                             let animId = null;
                             const renderFrame = () => {
                                 if (!v.paused && !v.ended) {
@@ -831,9 +812,7 @@
                                 }
                             };
 
-                            v.onplay = () => {
-                                renderFrame();
-                            };
+                            v.onplay = () => renderFrame();
 
                             v.onended = () => {
                                 if (animId) cancelAnimationFrame(animId);
@@ -843,7 +822,6 @@
                             };
 
                             v.play().catch(() => {
-                                // Fallback if autoplay restricted
                                 v.muted = true;
                                 v.play();
                             });
@@ -857,7 +835,6 @@
                     bgGain.gain.linearRampToValueAtTime(0, audioCtx.currentTime + fOut);
                 }
 
-                // Stop recorder
                 recorder.stop();
                 await recordingFinished;
 
@@ -882,7 +859,7 @@
             }
         });
 
-        // --- Core Compressor & Trimmer Engine ---
+        // Core Compressor & Trimmer Engine
         compressBtn.addEventListener('click', async () => {
             if (compressedBlobUrl) {
                 triggerDownload(compressedBlobUrl, compressedFilename);
@@ -909,7 +886,6 @@
                 const audioCtx = new AudioCtx();
                 const destNode = audioCtx.createMediaStreamDestination();
 
-                // If MP3 Extraction
                 if (format === 'mp3') {
                     statusText.innerText = "Extracting audio to MP3...";
                     const arrayBuf = await singleCompressFile.arrayBuffer();
@@ -935,7 +911,6 @@
                     return;
                 }
 
-                // Video Compress
                 renderCanvas.width = meta.width;
                 renderCanvas.height = meta.height;
                 const stream = renderCanvas.captureStream(30);
@@ -951,7 +926,7 @@
 
                 const recorder = new MediaRecorder(stream, {
                     mimeType: mimeType,
-                    videoBitsPerSecond: 3500000 // Optimized web bitrate
+                    videoBitsPerSecond: 3500000
                 });
 
                 const recordedChunks = [];
