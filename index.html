@@ -980,7 +980,7 @@
 
                     const mp3Blob = encodeAudioBufferToMp3(renderedBuffer);
                     mergedBlobUrl = URL.createObjectURL(mp3Blob);
-                    mergedFilename = `merged_audio.mp3`;
+                    mergedFilename = `CookieClip_Audio.mp3`;
 
                     processingProgress.value = 100;
                     mergeBtn.innerText = `⬇️ Download Audio (.MP3)`;
@@ -1131,7 +1131,7 @@
 
                 const seekableVideoBlob = await makeMp4Seekable(rawVideoBlob, calculatedTotalSec);
                 mergedBlobUrl = URL.createObjectURL(seekableVideoBlob);
-                mergedFilename = `merged_video_${resolution}p.mp4`;
+                mergedFilename = `CookieClip_Video_${resolution}p.mp4`;
 
                 processingProgress.value = 100;
                 mergeBtn.innerText = `⬇️ Download Merged Video (.MP4)`;
@@ -1228,7 +1228,7 @@
                     const mp3Blob = encodeAudioBufferToMp3(rendered);
 
                     compressedBlobUrl = URL.createObjectURL(mp3Blob);
-                    compressedFilename = `extracted_audio.mp3`;
+                    compressedFilename = `CookieClip_Audio.mp3`;
 
                     processingProgress.value = 100;
                     compressBtn.innerText = `⬇️ Download Audio (.MP3)`;
@@ -1360,7 +1360,6 @@
                         animId = requestAnimationFrame(render);
                     };
 
-                    // Active background interval prevents tab-switch freezes
                     animTimer = setInterval(() => {
                         if (isDone) return;
                         if (checkTime()) return;
@@ -1411,7 +1410,7 @@
 
                 const seekableVideoBlob = await makeMp4Seekable(rawVideoBlob, targetDur);
                 compressedBlobUrl = URL.createObjectURL(seekableVideoBlob);
-                compressedFilename = `compressed_video.mp4`;
+                compressedFilename = `CookieClip_Video_${targetResChoice !== 'auto' ? targetResChoice + 'p' : 'compressed'}.mp4`;
 
                 processingProgress.value = 100;
                 compressBtn.innerText = `⬇️ Download Compressed Video (.MP4)`;
