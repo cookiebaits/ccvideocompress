@@ -329,6 +329,7 @@
         let mergedVideoFilename = "";
         let compressedVideoBlobUrl = null;
         let compressedVideoFilename = "";
+        let ffmpegLogs = [];
 
         // UI Selectors
         const initContainer = document.getElementById('init-container');
@@ -434,14 +435,19 @@
             return orientation === 'horizontal' ? { width: w, height: h } : { width: h, height: w };
         };
 
-        // Resilient Engine Loader
+        // Engine loader with continuous log tracking
         const initEngine = async () => {
             if (ffmpeg && ffmpeg.isLoaded()) return ffmpeg;
 
             ffmpeg = createFFmpeg({
-                log: false,
+                log: true,
                 corePath: 'https://cdn.jsdelivr.net/npm/@ffmpeg/core-st@0.11.1/dist/ffmpeg-core.js',
                 mainName: 'main'
+            });
+
+            ffmpeg.setLogger(({ type, message }) => {
+                ffmpegLogs.push(message);
+                if (ffmpegLogs.length > 50) ffmpegLogs.shift();
             });
 
             ffmpeg.setProgress(({ ratio }) => {
@@ -476,16 +482,35 @@
             }
         };
 
-        // Robust command runner: intercepts normal Emscripten exit(0) completion
+        // Safe runner that handles Emscripten exit signals cleanly
         const safeRun = async (ff, ...args) => {
+            ffmpegLogs = [];
             try {
                 await ff.run(...args);
             } catch (err) {
                 const msg = String(err && err.message ? err.message : err);
                 if (msg.includes('exit(0)')) {
-                    return; // Standard successful exit in Emscripten
+                    return; // Standard success exit in Emscripten
                 }
                 throw err;
+            }
+        };
+
+        // Fast In-Browser QuickTime & MP4 Audio Detection
+        const checkHasAudio = async (file) => {
+            try {
+                const head = await file.slice(0, 1048576).arrayBuffer();
+                const headStr = new TextDecoder('latin1').decode(new Uint8Array(head));
+                if (headStr.includes('soun')) return true;
+
+                if (file.size > 1048576) {
+                    const tail = await file.slice(file.size - 1048576).arrayBuffer();
+                    const tailStr = new TextDecoder('latin1').decode(new Uint8Array(tail));
+                    if (tailStr.includes('soun')) return true;
+                }
+                return false;
+            } catch (e) {
+                return false;
             }
         };
 
@@ -613,7 +638,10 @@
                 video.preload = 'metadata';
                 video.onloadedmetadata = function() {
                     URL.revokeObjectURL(video.src);
-                    resolve(video.duration);
+                    resolve(video.duration || 0.1);
+                };
+                video.onerror = function() {
+                    resolve(0.1);
                 };
                 video.src = URL.createObjectURL(file);
             });
@@ -637,7 +665,7 @@
             document.body.removeChild(a);
         };
 
-        // --- MERGE ACTION (Single-Pass Even Pixel Normalization) ---
+        // --- MERGE ACTION ---
         mergeBtn.addEventListener('click', async () => {
             if (mergedVideoBlobUrl) {
                 triggerDownload(mergedVideoBlobUrl, mergedVideoFilename);
@@ -646,7 +674,7 @@
 
             if (!isLoaded || mergeFiles.length < 2) return;
             progressContainer.style.display = 'block';
-            statusText.innerText = "Centering orientations, scaling & merging...";
+            statusText.innerText = "Analyzing files & centering orientations...";
             processingProgress.value = 0;
             mergeBtn.disabled = true;
             mergeBtn.innerText = "Merging...";
@@ -666,18 +694,34 @@
                 let concatVideoInputs = "";
                 let concatAudioInputs = "";
 
+                // Pre-check audio tracks and durations
+                const durations = [];
+                const hasAudioFlags = [];
+
                 for (let i = 0; i < count; i++) {
-                    const dur = await getVideoDuration(mergeFiles[i]);
+                    const [dur, hasAudio] = await Promise.all([
+                        getVideoDuration(mergeFiles[i]),
+                        checkHasAudio(mergeFiles[i])
+                    ]);
+                    durations.push(dur);
+                    hasAudioFlags.push(hasAudio);
                     totalMergedDuration += dur;
 
                     const filename = `clip_${i}.mov`;
                     ff.FS('writeFile', filename, await fetchFile(mergeFiles[i]));
                     inputArgs.push('-i', filename);
 
-                    // Mathematically guarantee even dimensions & even padding offsets to prevent H.264 crashes
-                    filterSteps.push(`[${i}:v]scale=${targetW}:${targetH}:force_original_aspect_ratio=decrease,scale=trunc(iw/2)*2:trunc(ih/2)*2,pad=${targetW}:${targetH}:trunc((ow-iw)/4)*2:trunc((oh-ih)/4)*2:black,setsar=1,fps=30,format=yuv420p[v${i}]`);
-                    filterSteps.push(`[${i}:a]aformat=sample_rates=44100:channel_layouts=stereo[a${i}]`);
+                    // Automatic pillarbox/letterbox centering with black bars
+                    filterSteps.push(`[${i}:v]scale=${targetW}:${targetH}:force_original_aspect_ratio=decrease,pad=${targetW}:${targetH}:-1:-1:color=black,setsar=1,fps=30,format=yuv420p[v${i}]`);
                     
+                    if (hasAudio) {
+                        filterSteps.push(`[${i}:a]aformat=sample_rates=44100:channel_layouts=stereo[a${i}]`);
+                    } else {
+                        // Generate silent track for silent clips to prevent stream mismatch
+                        const safeDur = Math.max(0.1, dur).toFixed(2);
+                        filterSteps.push(`anullsrc=channel_layout=stereo:sample_rate=44100,atrim=0:${safeDur}[a${i}]`);
+                    }
+
                     concatVideoInputs += `[v${i}]`;
                     concatAudioInputs += `[v${i}][a${i}]`;
                 }
@@ -717,19 +761,29 @@
 
                 const fullFilterComplex = filterSteps.join(';');
 
+                statusText.innerText = "Rendering and joining video sequence...";
+
                 await safeRun(
                     ff,
                     ...inputArgs,
                     '-filter_complex', fullFilterComplex,
                     ...finalMapArgs,
                     '-vcodec', 'libx264', '-crf', '24', '-preset', 'ultrafast',
-                    '-pix_fmt', 'yuv420p', '-c:a', 'aac', '-t', totalMergedDuration.toString(),
+                    '-pix_fmt', 'yuv420p', '-c:a', 'aac',
                     outputName
                 );
 
-                const data = ff.FS('readFile', outputName);
+                // Verify output exists
+                let fileBytes = null;
+                try {
+                    fileBytes = ff.FS('readFile', outputName);
+                } catch (readErr) {
+                    const recentLogs = ffmpegLogs.slice(-10).join('\n');
+                    throw new Error("FFmpeg aborted before creating the file.\n\nLog Details:\n" + recentLogs);
+                }
+
                 if (mergedVideoBlobUrl) URL.revokeObjectURL(mergedVideoBlobUrl);
-                mergedVideoBlobUrl = URL.createObjectURL(new Blob([data.buffer], { type: `video/${outExt}` }));
+                mergedVideoBlobUrl = URL.createObjectURL(new Blob([fileBytes.buffer], { type: `video/${outExt}` }));
                 mergedVideoFilename = `merged_video_${mergeResolution.value}p.${outExt}`;
 
                 mergeBtn.innerText = `⬇️ Download Merged Video (.${outExt.toUpperCase()})`;
@@ -745,12 +799,11 @@
 
             } catch (err) {
                 console.error("Merge error:", err);
-                alert("An error occurred during merging: " + (err.message || err));
+                alert("An error occurred during merging:\n" + (err.message || err));
                 statusText.innerText = "Failed.";
                 resetMergeButton();
             } finally {
-                // Reset instance to free memory for the next run
-                ffmpeg = null;
+                ffmpeg = null; // Free RAM for next task
             }
         });
 
@@ -845,9 +898,16 @@
                     );
                 }
 
-                const data = ff.FS('readFile', outputName);
+                let fileBytes = null;
+                try {
+                    fileBytes = ff.FS('readFile', outputName);
+                } catch (readErr) {
+                    const recentLogs = ffmpegLogs.slice(-10).join('\n');
+                    throw new Error("FFmpeg aborted before creating the file.\n\nLog Details:\n" + recentLogs);
+                }
+
                 if (compressedVideoBlobUrl) URL.revokeObjectURL(compressedVideoBlobUrl);
-                compressedVideoBlobUrl = URL.createObjectURL(new Blob([data.buffer], { type: `video/${outExt}` }));
+                compressedVideoBlobUrl = URL.createObjectURL(new Blob([fileBytes.buffer], { type: `video/${outExt}` }));
                 compressedVideoFilename = `compressed_video.${outExt}`;
 
                 compressBtn.innerText = `⬇️ Download Compressed Video (.${outExt.toUpperCase()})`;
@@ -862,7 +922,7 @@
 
             } catch (err) {
                 console.error("Compress error:", err);
-                alert("An error occurred during compression: " + (err.message || err));
+                alert("An error occurred during compression:\n" + (err.message || err));
                 statusText.innerText = "Failed.";
                 resetCompressButton();
             } finally {
