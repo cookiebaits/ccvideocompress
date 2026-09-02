@@ -435,7 +435,6 @@
             return orientation === 'horizontal' ? { width: w, height: h } : { width: h, height: w };
         };
 
-        // Engine loader with continuous log tracking
         const initEngine = async () => {
             if (ffmpeg && ffmpeg.isLoaded()) return ffmpeg;
 
@@ -482,7 +481,6 @@
             }
         };
 
-        // Safe runner that handles Emscripten exit signals cleanly
         const safeRun = async (ff, ...args) => {
             ffmpegLogs = [];
             try {
@@ -490,13 +488,12 @@
             } catch (err) {
                 const msg = String(err && err.message ? err.message : err);
                 if (msg.includes('exit(0)')) {
-                    return; // Standard success exit in Emscripten
+                    return;
                 }
                 throw err;
             }
         };
 
-        // Fast In-Browser QuickTime & MP4 Audio Detection
         const checkHasAudio = async (file) => {
             try {
                 const head = await file.slice(0, 1048576).arrayBuffer();
@@ -665,7 +662,7 @@
             document.body.removeChild(a);
         };
 
-        // --- MERGE ACTION ---
+        // --- MERGE ACTION (Single-Pass Execution to Prevent RAM Bloat) ---
         mergeBtn.addEventListener('click', async () => {
             if (mergedVideoBlobUrl) {
                 triggerDownload(mergedVideoBlobUrl, mergedVideoFilename);
@@ -674,7 +671,7 @@
 
             if (!isLoaded || mergeFiles.length < 2) return;
             progressContainer.style.display = 'block';
-            statusText.innerText = "Analyzing files & centering orientations...";
+            statusText.innerText = "Processing all clips in a single pass...";
             processingProgress.value = 0;
             mergeBtn.disabled = true;
             mergeBtn.innerText = "Merging...";
@@ -694,34 +691,18 @@
                 let concatVideoInputs = "";
                 let concatAudioInputs = "";
 
-                // Pre-check audio tracks and durations
-                const durations = [];
-                const hasAudioFlags = [];
-
                 for (let i = 0; i < count; i++) {
-                    const [dur, hasAudio] = await Promise.all([
-                        getVideoDuration(mergeFiles[i]),
-                        checkHasAudio(mergeFiles[i])
-                    ]);
-                    durations.push(dur);
-                    hasAudioFlags.push(hasAudio);
+                    const dur = await getVideoDuration(mergeFiles[i]);
                     totalMergedDuration += dur;
 
                     const filename = `clip_${i}.mov`;
                     ff.FS('writeFile', filename, await fetchFile(mergeFiles[i]));
                     inputArgs.push('-i', filename);
 
-                    // Automatic pillarbox/letterbox centering with black bars
+                    // Single-pass scaling and black centering padding
                     filterSteps.push(`[${i}:v]scale=${targetW}:${targetH}:force_original_aspect_ratio=decrease,pad=${targetW}:${targetH}:-1:-1:color=black,setsar=1,fps=30,format=yuv420p[v${i}]`);
+                    filterSteps.push(`[${i}:a]aformat=sample_rates=44100:channel_layouts=stereo[a${i}]`);
                     
-                    if (hasAudio) {
-                        filterSteps.push(`[${i}:a]aformat=sample_rates=44100:channel_layouts=stereo[a${i}]`);
-                    } else {
-                        // Generate silent track for silent clips to prevent stream mismatch
-                        const safeDur = Math.max(0.1, dur).toFixed(2);
-                        filterSteps.push(`anullsrc=channel_layout=stereo:sample_rate=44100,atrim=0:${safeDur}[a${i}]`);
-                    }
-
                     concatVideoInputs += `[v${i}]`;
                     concatAudioInputs += `[v${i}][a${i}]`;
                 }
@@ -761,8 +742,6 @@
 
                 const fullFilterComplex = filterSteps.join(';');
 
-                statusText.innerText = "Rendering and joining video sequence...";
-
                 await safeRun(
                     ff,
                     ...inputArgs,
@@ -773,13 +752,12 @@
                     outputName
                 );
 
-                // Verify output exists
                 let fileBytes = null;
                 try {
                     fileBytes = ff.FS('readFile', outputName);
                 } catch (readErr) {
-                    const recentLogs = ffmpegLogs.slice(-10).join('\n');
-                    throw new Error("FFmpeg aborted before creating the file.\n\nLog Details:\n" + recentLogs);
+                    const recentLogs = ffmpegLogs.slice(-15).join('\n');
+                    throw new Error("FFmpeg completed without generating output file.\n\nLog Details:\n" + recentLogs);
                 }
 
                 if (mergedVideoBlobUrl) URL.revokeObjectURL(mergedVideoBlobUrl);
@@ -803,7 +781,7 @@
                 statusText.innerText = "Failed.";
                 resetMergeButton();
             } finally {
-                ffmpeg = null; // Free RAM for next task
+                ffmpeg = null;
             }
         });
 
@@ -877,7 +855,7 @@
                             ff,
                             '-ss', trimStart.toString(), '-i', inputName,
                             ...bgAudioInputArgs,
-                            '-filter_complex', `[0:v]${evenScaleFilter}[v];${fadeFilter};[0:a][bgmusic]amix=inputs=2:duration=first:dropout_transition=2[mixed]`,
+                            '-filter_complex`, `[0:v]${evenScaleFilter}[v];${fadeFilter};[0:a][bgmusic]amix=inputs=2:duration=first:dropout_transition=2[mixed]`,
                             '-t', targetDuration.toString(),
                             '-map', '[v]', '-map', '[mixed]',
                             '-vcodec', 'libx264', '-crf', '28', '-preset', 'ultrafast',
@@ -902,8 +880,8 @@
                 try {
                     fileBytes = ff.FS('readFile', outputName);
                 } catch (readErr) {
-                    const recentLogs = ffmpegLogs.slice(-10).join('\n');
-                    throw new Error("FFmpeg aborted before creating the file.\n\nLog Details:\n" + recentLogs);
+                    const recentLogs = ffmpegLogs.slice(-15).join('\n');
+                    throw new Error("FFmpeg completed without generating output file.\n\nLog Details:\n" + recentLogs);
                 }
 
                 if (compressedVideoBlobUrl) URL.revokeObjectURL(compressedVideoBlobUrl);
@@ -921,7 +899,6 @@
                 } catch(e) {}
 
             } catch (err) {
-                console.error("Compress error:", err);
                 alert("An error occurred during compression:\n" + (err.message || err));
                 statusText.innerText = "Failed.";
                 resetCompressButton();
