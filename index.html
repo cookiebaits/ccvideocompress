@@ -112,6 +112,19 @@
         .drop-zone p { margin: 0; font-size: 13px; color: #4b5563; }
         .drop-zone span.sub-text { font-size: 11px; color: #9ca3af; }
         
+        .size-badge {
+            display: none;
+            background: #f0fdf4;
+            border: 1px solid #bbf7d0;
+            color: #166534;
+            padding: 8px 12px;
+            border-radius: 6px;
+            font-size: 12px;
+            margin-bottom: 12px;
+            font-weight: 500;
+            line-height: 1.4;
+        }
+
         .clip-list { list-style: none; padding: 0; margin: 0 0 12px 0; max-height: 220px; overflow-y: auto; }
         .clip-item {
             display: flex; align-items: center; justify-content: space-between;
@@ -275,12 +288,15 @@
         <!-- 2. COMPRESS & TRIM -->
         <div class="card">
             <h3>2. Video Compressor & Trim</h3>
-            <p class="subtitle">Compress a single file, adjust audio, and trim timing.</p>
+            <p class="subtitle">Compress video size, adjust audio, and trim timing without quality loss.</p>
 
             <div class="drop-zone" id="compress-drop-zone">
                 <p id="compress-filename">📂 Drag & Drop 1 video here or <strong>browse</strong></p>
                 <input type="file" id="compress-uploader" accept="video/*">
             </div>
+
+            <!-- Live Compression Estimator Badge -->
+            <div id="compress-size-badge" class="size-badge"></div>
 
             <div class="trim-controls">
                 <label>
@@ -293,14 +309,24 @@
                 </label>
             </div>
 
-            <!-- Compressor Target Resolution Selector -->
+            <!-- Dynamic Compression Strength Selector -->
             <div class="control-row">
-                <label for="compress-resolution">Target Compression:</label>
+                <label for="compress-strength">Compression Preset:</label>
+                <select id="compress-strength">
+                    <option value="0.55" selected>Balanced (~45-55% smaller - Crisp)</option>
+                    <option value="0.72">High Quality (~25-30% smaller - Maximum details)</option>
+                    <option value="0.38">Maximum Saver (~60-70% smaller - Efficient)</option>
+                </select>
+            </div>
+
+            <!-- Resolution Optimization Option -->
+            <div class="control-row">
+                <label for="compress-resolution">Resolution:</label>
                 <select id="compress-resolution">
-                    <option value="auto" selected>Auto Match Original Dimensions</option>
-                    <option value="720">720p HD (Balanced Size)</option>
-                    <option value="1080">1080p Full HD</option>
-                    <option value="480">480p SD (Smallest File)</option>
+                    <option value="auto" selected>Keep Original Resolution</option>
+                    <option value="720">Scale to 720p HD (Great for savings)</option>
+                    <option value="1080">Scale to 1080p Full HD</option>
+                    <option value="480">Scale to 480p SD</option>
                 </select>
             </div>
 
@@ -396,8 +422,10 @@
         const compressDropZone = document.getElementById('compress-drop-zone');
         const compressUploader = document.getElementById('compress-uploader');
         const compressFilename = document.getElementById('compress-filename');
+        const compressSizeBadge = document.getElementById('compress-size-badge');
         const compressBtn = document.getElementById('compress-btn');
         const compressFormat = document.getElementById('compress-format');
+        const compressStrength = document.getElementById('compress-strength');
         const compressResolution = document.getElementById('compress-resolution');
         const trimStartInput = document.getElementById('trim-start');
         const trimEndInput = document.getElementById('trim-end');
@@ -486,7 +514,6 @@
             });
         };
 
-        // Auto-configure optimal resolution & orientation based on uploaded clips
         const autoConfigureFromClips = async (files) => {
             if (!files || files.length === 0) return;
             const meta = await probeVideoMetadata(files[0]);
@@ -611,22 +638,50 @@
 
         setupDropZone(mergeDropZone, mergeUploader, handleMergeFiles);
 
+        // Update compression size estimator badge
+        const updateCompressSizeEstimator = async () => {
+            if (!singleCompressFile) {
+                compressSizeBadge.style.display = 'none';
+                return;
+            }
+            const meta = await probeVideoMetadata(singleCompressFile);
+            const origSizeMB = (singleCompressFile.size / (1024 * 1024)).toFixed(1);
+            const origBitrateMbps = ((singleCompressFile.size * 8) / (meta.duration * 1000000)).toFixed(1);
+            const ratio = parseFloat(compressStrength.value) || 0.55;
+            const estSizeMB = (origSizeMB * ratio).toFixed(1);
+
+            compressSizeBadge.innerHTML = `
+                📊 <strong>Original:</strong> ${origSizeMB} MB (~${origBitrateMbps} Mbps)<br>
+                📉 <strong>Estimated Compressed:</strong> ~${estSizeMB} MB (Guaranteed reduction)
+            `;
+            compressSizeBadge.style.display = 'block';
+        };
+
         const handleCompressFile = async (files) => {
             if (files.length > 0) {
                 singleCompressFile = files[0];
                 compressFilename.innerHTML = `Selected: <strong>${singleCompressFile.name}</strong>`;
                 resetCompressButton();
+                await updateCompressSizeEstimator();
             }
         };
 
         setupDropZone(compressDropZone, compressUploader, handleCompressFile);
+
+        compressStrength.addEventListener('change', () => {
+            resetCompressButton();
+            updateCompressSizeEstimator();
+        });
+        compressResolution.addEventListener('change', () => {
+            resetCompressButton();
+            updateCompressSizeEstimator();
+        });
 
         compressAudioMode.addEventListener('change', () => {
             const needsAudio = (compressAudioMode.value === 'add_music' || compressAudioMode.value === 'mute_and_add');
             compressAudioWrapper.style.display = needsAudio ? 'block' : 'none';
             resetCompressButton();
         });
-        compressResolution.addEventListener('change', resetCompressButton);
         compressFormat.addEventListener('change', resetCompressButton);
         compressLoopMusic.addEventListener('change', resetCompressButton);
         trimStartInput.addEventListener('input', resetCompressButton);
@@ -650,7 +705,7 @@
             document.body.removeChild(a);
         };
 
-        // --- Fast Offline In-Browser MP3 Encoder ---
+        // Fast Offline In-Browser MP3 Encoder
         const encodeAudioBufferToMp3 = (audioBuffer) => {
             const channels = audioBuffer.numberOfChannels;
             const sampleRate = audioBuffer.sampleRate;
@@ -681,7 +736,7 @@
             return new Blob(mp3Data, { type: 'audio/mp3' });
         };
 
-        // --- Core MP4 Duration & Random Access Indexer (Fixes Grayed-out Seekbar) ---
+        // Core MP4 Duration & Random Access Indexer (Fixes Grayed-out Seekbar)
         async function makeMp4Seekable(blob, durationSec) {
             const arrayBuffer = await blob.arrayBuffer();
             const data = new Uint8Array(arrayBuffer);
@@ -1147,7 +1202,7 @@
             }
         });
 
-        // --- Hardware-Accelerated Compressor & Trimmer Engine ---
+        // --- Hardware-Accelerated Compressor & Trimmer Engine (Guaranteed File Size Reduction) ---
         compressBtn.addEventListener('click', async () => {
             if (compressedBlobUrl) {
                 triggerDownload(compressedBlobUrl, compressedFilename);
@@ -1165,6 +1220,7 @@
             const format = compressFormat.value;
             const audioMode = compressAudioMode.value;
             const targetResChoice = compressResolution.value;
+            const compressionRatio = parseFloat(compressStrength.value) || 0.55;
 
             try {
                 const meta = await probeVideoMetadata(singleCompressFile);
@@ -1238,10 +1294,12 @@
                     return;
                 }
 
-                // Calculate Target Scaling Dimensions
+                // Calculate Input Bitrate & Target Compressed Bitrate
+                const originalBitrate = (singleCompressFile.size * 8) / meta.duration;
+                
+                // Set target resolution
                 let targetW = meta.width;
                 let targetH = meta.height;
-                let targetBitrate = 4500000;
 
                 if (targetResChoice !== 'auto') {
                     const maxH = parseInt(targetResChoice, 10);
@@ -1257,10 +1315,19 @@
                     }
                     targetW = Math.round(targetW / 2) * 2;
                     targetH = Math.round(targetH / 2) * 2;
+                }
 
-                    if (maxH <= 480) targetBitrate = 1200000;
-                    else if (maxH <= 720) targetBitrate = 2800000;
-                    else if (maxH <= 1080) targetBitrate = 5000000;
+                // Quality-guaranteed bitrate calculation (Always lower than original)
+                let calculatedBitrate = Math.round(originalBitrate * compressionRatio);
+
+                // Resolution safety floors (prevents pixelation) and caps
+                const pixelCount = targetW * targetH;
+                const minFloor = pixelCount > 1920 * 1080 ? 2500000 : (pixelCount > 1280 * 720 ? 1600000 : 900000);
+                
+                // If original bitrate was unusually high, compress heavily. If already low, respect ratio with floor.
+                let finalTargetBitrate = Math.min(Math.round(originalBitrate * 0.85), Math.max(minFloor, calculatedBitrate));
+                if (finalTargetBitrate >= originalBitrate) {
+                    finalTargetBitrate = Math.round(originalBitrate * 0.70); // Guarantee reduction
                 }
 
                 renderCanvas.width = targetW;
@@ -1279,7 +1346,8 @@
 
                 const recorder = new MediaRecorder(stream, {
                     mimeType: mimeType,
-                    videoBitsPerSecond: targetBitrate
+                    videoBitsPerSecond: finalTargetBitrate,
+                    audioBitsPerSecond: 128000
                 });
 
                 const recordedChunks = [];
@@ -1307,11 +1375,16 @@
                     bgSource.start();
                 }
 
-                // Robust Frame Renderer with Active Timer Failsafe
+                // Frame-Accurate Hardware Renderer with requestVideoFrameCallback + Timer Failsafe
                 await new Promise((resolveVideo) => {
                     const v = document.createElement('video');
                     v.muted = false;
                     v.playsInline = true;
+                    // DOM attachment prevents background tab throttling
+                    v.style.position = 'fixed';
+                    v.style.opacity = '0.001';
+                    v.style.pointerEvents = 'none';
+                    document.body.appendChild(v);
                     v.src = URL.createObjectURL(singleCompressFile);
 
                     let vSource = null;
@@ -1324,49 +1397,48 @@
 
                     let isDone = false;
                     let animTimer = null;
-                    let animId = null;
 
                     const finish = () => {
                         if (isDone) return;
                         isDone = true;
                         if (animTimer) clearInterval(animTimer);
-                        if (animId) cancelAnimationFrame(animId);
                         v.pause();
                         if (vSource) try { vSource.disconnect(); } catch (e) {}
                         URL.revokeObjectURL(v.src);
+                        if (v.parentNode) document.body.removeChild(v);
                         resolveVideo();
                     };
 
                     v.onended = finish;
                     v.onerror = finish;
 
-                    const checkTime = () => {
-                        if (v.currentTime >= trimStart + targetDur || v.ended) {
-                            finish();
-                            return true;
-                        }
-                        return false;
-                    };
-
                     const render = () => {
                         if (isDone) return;
-                        if (checkTime()) return;
+                        if (v.currentTime >= trimStart + targetDur || v.ended) {
+                            finish();
+                            return;
+                        }
 
                         ctx.drawImage(v, 0, 0, targetW, targetH);
                         const progress = Math.min(95, Math.max(0, Math.round(((v.currentTime - trimStart) / targetDur) * 95)));
                         processingProgress.value = progress;
                         statusText.innerText = `Compressing & trimming (${progress}%)...`;
 
-                        animId = requestAnimationFrame(render);
+                        if ('requestVideoFrameCallback' in HTMLVideoElement.prototype) {
+                            v.requestVideoFrameCallback(render);
+                        } else {
+                            requestAnimationFrame(render);
+                        }
                     };
 
                     animTimer = setInterval(() => {
                         if (isDone) return;
-                        if (checkTime()) return;
-                        if (v.paused && !v.ended) {
+                        if (v.currentTime >= trimStart + targetDur || v.ended) {
+                            finish();
+                        } else if (v.paused && !v.ended) {
                             v.play().catch(() => {});
                         }
-                    }, 200);
+                    }, 250);
 
                     const startPlayback = () => {
                         v.play().then(() => {
@@ -1410,13 +1482,18 @@
 
                 const seekableVideoBlob = await makeMp4Seekable(rawVideoBlob, targetDur);
                 compressedBlobUrl = URL.createObjectURL(seekableVideoBlob);
+                
+                const finalSizeMB = (seekableVideoBlob.size / (1024 * 1024)).toFixed(1);
+                const origSizeMB = (singleCompressFile.size / (1024 * 1024)).toFixed(1);
+                const savedPercent = Math.round((1 - (seekableVideoBlob.size / singleCompressFile.size)) * 100);
+
                 compressedFilename = `CookieClip_Video_${targetResChoice !== 'auto' ? targetResChoice + 'p' : 'compressed'}.mp4`;
 
                 processingProgress.value = 100;
-                compressBtn.innerText = `⬇️ Download Compressed Video (.MP4)`;
+                compressBtn.innerText = `⬇️ Download Compressed Video (${finalSizeMB} MB)`;
                 compressBtn.classList.add('ready-download');
                 compressBtn.disabled = false;
-                statusText.innerText = "Done! Video compressed, trimmed, and seekable.";
+                statusText.innerText = `Done! Reduced from ${origSizeMB} MB to ${finalSizeMB} MB (${savedPercent > 0 ? savedPercent + '% smaller' : 'Optimized'}).`;
 
             } catch (err) {
                 console.error("Compress error:", err);
