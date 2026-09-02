@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>CookieClip Combine & Compress</title>
-    <script src="https://cdn.jsdelivr.net/npm/@ffmpeg/ffmpeg@0.11.6/dist/ffmpeg.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/lamejs@1.2.1/lame.min.js"></script>
     <style>
         body {
             font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
@@ -15,7 +15,6 @@
             padding: 20px;
             text-align: center;
         }
-        
         .card {
             background: white;
             padding: 25px;
@@ -38,36 +37,6 @@
             margin-bottom: 10px;
             font-weight: 500;
         }
-
-        /* Fast Inline Loader */
-        #init-container {
-            background: #f8fafc;
-            border: 1px solid #e2e8f0;
-            border-radius: 8px;
-            padding: 16px 20px;
-            margin: 15px 0 20px 0;
-            text-align: center;
-        }
-        #init-container h3 {
-            margin: 0 0 6px 0;
-            font-size: 15px;
-            color: #1e293b;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            gap: 8px;
-        }
-        .spinner {
-            width: 16px; height: 16px;
-            border: 2px solid #cbd5e1; border-top: 2px solid #3b82f6;
-            border-radius: 50%;
-            animation: spin 0.8s linear infinite;
-        }
-        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
-        
-        #init-status { margin: 0; font-size: 13px; color: #64748b; }
-        #init-progress { width: 100%; height: 6px; margin-top: 12px; border-radius: 3px; }
-
         .ephemeral-alert {
             background-color: #fffbeb;
             border-left: 4px solid #f59e0b;
@@ -78,7 +47,6 @@
             margin-bottom: 15px;
             line-height: 1.4;
         }
-
         .drop-zone {
             border: 2px dashed #d1d5db;
             border-radius: 8px;
@@ -89,9 +57,8 @@
             transition: all 0.2s ease;
             margin-bottom: 15px;
         }
-        .drop-zone:not(.disabled):hover { border-color: #9ca3af; background-color: #f3f4f6; }
+        .drop-zone:hover { border-color: #9ca3af; background-color: #f3f4f6; }
         .drop-zone.dragover { background-color: #eff6ff; border-color: #3b82f6; }
-        .drop-zone.disabled { opacity: 0.55; cursor: not-allowed; border-color: #e5e7eb; background-color: #f9fafb; }
         .drop-zone p { margin: 0; font-size: 14px; color: #4b5563; }
         .drop-zone span.sub-text { font-size: 12px; color: #9ca3af; }
         
@@ -113,7 +80,6 @@
         }
         .auto-hint { font-size: 11px; color: #059669; font-weight: 600; margin-left: 6px; }
         select { padding: 6px 12px; border-radius: 4px; border: 1px solid #d1d5db; font-size: 14px; max-width: 60%; }
-        select:disabled, input:disabled { opacity: 0.55; cursor: not-allowed; }
         
         .audio-upload-wrapper {
             display: none; background: #f8fafc; border: 1px solid #e2e8f0; padding: 14px; border-radius: 8px; margin-bottom: 15px;
@@ -143,26 +109,22 @@
         #progress-container { margin-top: 20px; display: none; text-align: center; }
         #processing-progress { width: 100%; height: 18px; }
         #status-text { margin-bottom: 5px; font-size: 14px; color: #4b5563; font-weight: 500; }
-        #message { margin-top: 15px; font-size: 14px; color: #059669; text-align: center; font-weight: 500; display: none; }
+        
+        /* Off-screen rendering canvas */
+        #render-canvas { display: none; }
     </style>
 </head>
 <body>
 
-    <div class="card header-card">
-        <span class="security-badge">🔒 Processes strictly offline in RAM. Clears when tab closes.</span>
-        <h2>CookieClip Combine & Compress</h2>
-        <p class="subtitle">Merge, compress, customize audio, and trim clips locally without servers.</p>
-        
-        <div id="init-container">
-            <h3><div class="spinner"></div> Loading Components</h3>
-            <p id="init-status">Downloading engine (~25MB one-time, cached in browser)...</p>
-            <progress id="init-progress"></progress>
-        </div>
+    <canvas id="render-canvas"></canvas>
 
-        <p id="message">✅ FFmpeg Engine Ready.</p>
+    <div class="card header-card">
+        <span class="security-badge">🔒 Hardware Accelerated & RAM Ephemeral. No Server Uploads.</span>
+        <h2>CookieClip Combine & Compress</h2>
+        <p class="subtitle">Merge, compress, customize audio, and trim clips locally without browser freezes.</p>
 
         <div class="ephemeral-alert">
-            ⚠️ <strong>Heads Up:</strong> Download your finished videos immediately! No history or files are retained. Everything permanently self-deletes once you close or refresh this tab.
+            ⚠️ <strong>Heads Up:</strong> Download your finished files immediately! No history is retained. Everything permanently self-deletes once you close or refresh this tab.
         </div>
 
         <div id="progress-container">
@@ -175,10 +137,10 @@
         <h3>1. Clip Merger</h3>
         <p class="subtitle">Combine up to 10 clips with automatic orientation centering and scaling.</p>
 
-        <div class="drop-zone disabled" id="merge-drop-zone">
+        <div class="drop-zone" id="merge-drop-zone">
             <p>📂 Drag & Drop up to 10 videos here or <strong>browse</strong></p>
             <span class="sub-text">Auto-sorts 1a, 1b, 1c... | Supports mixed horizontal & vertical clips</span>
-            <input type="file" id="merge-uploader" accept="video/*" multiple disabled>
+            <input type="file" id="merge-uploader" accept="video/*" multiple>
         </div>
 
         <ul class="clip-list" id="merge-list"></ul>
@@ -188,7 +150,7 @@
                 Output Orientation:
                 <span id="orientation-auto-badge" class="auto-hint"></span>
             </label>
-            <select id="merge-orientation" disabled>
+            <select id="merge-orientation">
                 <option value="horizontal">Landscape / Horizontal (16:9)</option>
                 <option value="vertical">Portrait / Vertical / Shorts (9:16)</option>
             </select>
@@ -199,7 +161,7 @@
                 Target Resolution:
                 <span id="res-auto-badge" class="auto-hint"></span>
             </label>
-            <select id="merge-resolution" disabled>
+            <select id="merge-resolution">
                 <option value="480">480p (SD)</option>
                 <option value="720">720p (HD)</option>
                 <option value="1080" selected>1080p (Full HD)</option>
@@ -210,7 +172,7 @@
 
         <div class="control-row">
             <label for="merge-audio-mode">Audio Mode:</label>
-            <select id="merge-audio-mode" disabled>
+            <select id="merge-audio-mode">
                 <option value="original">Keep Original Audio</option>
                 <option value="mute">Mute Output Video</option>
                 <option value="add_music">Add Custom Background Music</option>
@@ -219,26 +181,26 @@
         </div>
 
         <div class="audio-upload-wrapper" id="merge-audio-wrapper">
-            <div class="drop-zone disabled" id="merge-audio-drop-zone" style="margin-bottom: 8px;">
+            <div class="drop-zone" id="merge-audio-drop-zone" style="margin-bottom: 8px;">
                 <p id="merge-audio-label">🎵 Click / Drag background music file (.mp3, .wav, .aac)</p>
-                <input type="file" id="merge-audio-uploader" accept="audio/*" disabled>
+                <input type="file" id="merge-audio-uploader" accept="audio/*">
             </div>
 
             <div class="music-settings">
                 <label class="checkbox-label">
-                    <input type="checkbox" id="merge-loop-music" checked disabled> Loop music if video is longer
+                    <input type="checkbox" id="merge-loop-music" checked> Loop music if video is longer
                 </label>
                 <label class="checkbox-label">
-                    <input type="checkbox" id="merge-fade-music" checked disabled> Enable smooth Fade In & Out
+                    <input type="checkbox" id="merge-fade-music" checked> Enable smooth Fade In & Out
                 </label>
                 <div class="fade-grid" id="merge-fade-controls">
                     <div class="fade-input-group">
                         <label for="merge-fade-in">Fade In (sec):</label>
-                        <input type="number" id="merge-fade-in" value="2.0" min="0.1" step="0.5" disabled>
+                        <input type="number" id="merge-fade-in" value="2.0" min="0.1" step="0.5">
                     </div>
                     <div class="fade-input-group">
                         <label for="merge-fade-out">Fade Out (sec):</label>
-                        <input type="number" id="merge-fade-out" value="3.0" min="0.1" step="0.5" disabled>
+                        <input type="number" id="merge-fade-out" value="3.0" min="0.1" step="0.5">
                     </div>
                 </div>
             </div>
@@ -246,9 +208,9 @@
 
         <div class="control-row">
             <label for="merge-format">Output Format:</label>
-            <select id="merge-format" disabled>
-                <option value="mp4">MP4 (.mp4)</option>
-                <option value="mov">MOV (.mov)</option>
+            <select id="merge-format">
+                <option value="mp4">MP4 Video (.mp4)</option>
+                <option value="mp3">MP3 Audio Extraction (.mp3)</option>
             </select>
         </div>
 
@@ -257,27 +219,27 @@
 
     <div class="card">
         <h3>2. Video Compressor & Trim</h3>
-        <p class="subtitle">Compress a single file for YouTube, adjust audio, and trim timing.</p>
+        <p class="subtitle">Compress a single file, adjust audio, and trim timing.</p>
 
-        <div class="drop-zone disabled" id="compress-drop-zone">
+        <div class="drop-zone" id="compress-drop-zone">
             <p id="compress-filename">📂 Drag & Drop 1 video here or <strong>browse</strong></p>
-            <input type="file" id="compress-uploader" accept="video/*" disabled>
+            <input type="file" id="compress-uploader" accept="video/*">
         </div>
 
         <div class="trim-controls">
             <label>
                 Cut from Start (seconds)
-                <input type="number" id="trim-start" value="0" min="0" step="0.1" disabled>
+                <input type="number" id="trim-start" value="0" min="0" step="0.1">
             </label>
             <label>
                 Cut from End (seconds)
-                <input type="number" id="trim-end" value="0" min="0" step="0.1" disabled>
+                <input type="number" id="trim-end" value="0" min="0" step="0.1">
             </label>
         </div>
 
         <div class="control-row">
             <label for="compress-audio-mode">Audio Mode:</label>
-            <select id="compress-audio-mode" disabled>
+            <select id="compress-audio-mode">
                 <option value="original">Keep Original Audio</option>
                 <option value="mute">Mute Output Video</option>
                 <option value="add_music">Add Custom Background Music</option>
@@ -286,26 +248,26 @@
         </div>
 
         <div class="audio-upload-wrapper" id="compress-audio-wrapper">
-            <div class="drop-zone disabled" id="compress-audio-drop-zone" style="margin-bottom: 8px;">
+            <div class="drop-zone" id="compress-audio-drop-zone" style="margin-bottom: 8px;">
                 <p id="compress-audio-label">🎵 Click / Drag background music file (.mp3, .wav, .aac)</p>
-                <input type="file" id="compress-audio-uploader" accept="audio/*" disabled>
+                <input type="file" id="compress-audio-uploader" accept="audio/*">
             </div>
 
             <div class="music-settings">
                 <label class="checkbox-label">
-                    <input type="checkbox" id="compress-loop-music" checked disabled> Loop music if video is longer
+                    <input type="checkbox" id="compress-loop-music" checked> Loop music if video is longer
                 </label>
                 <label class="checkbox-label">
-                    <input type="checkbox" id="compress-fade-music" checked disabled> Enable smooth Fade In & Out
+                    <input type="checkbox" id="compress-fade-music" checked> Enable smooth Fade In & Out
                 </label>
                 <div class="fade-grid" id="compress-fade-controls">
                     <div class="fade-input-group">
                         <label for="compress-fade-in">Fade In (sec):</label>
-                        <input type="number" id="compress-fade-in" value="2.0" min="0.1" step="0.5" disabled>
+                        <input type="number" id="compress-fade-in" value="2.0" min="0.1" step="0.5">
                     </div>
                     <div class="fade-input-group">
                         <label for="compress-fade-out">Fade Out (sec):</label>
-                        <input type="number" id="compress-fade-out" value="3.0" min="0.1" step="0.5" disabled>
+                        <input type="number" id="compress-fade-out" value="3.0" min="0.1" step="0.5">
                     </div>
                 </div>
             </div>
@@ -313,9 +275,9 @@
 
         <div class="control-row">
             <label for="compress-format">Output Format:</label>
-            <select id="compress-format" disabled>
-                <option value="mp4">MP4 (.mp4)</option>
-                <option value="mov">MOV (.mov)</option>
+            <select id="compress-format">
+                <option value="mp4">MP4 Video (.mp4)</option>
+                <option value="mp3">MP3 Audio Extraction (.mp3)</option>
             </select>
         </div>
 
@@ -323,28 +285,22 @@
     </div>
 
     <script>
-        const { createFFmpeg, fetchFile } = FFmpeg;
-
-        const CORE_PATH = 'https://cdn.jsdelivr.net/npm/@ffmpeg/core-st@0.11.1/dist/ffmpeg-core.js';
-        let isLoaded = false;
-
         let mergeFiles = [];
         let mergeAudioFile = null;
         let singleCompressFile = null;
         let compressAudioFile = null;
 
-        let mergedVideoBlobUrl = null;
-        let mergedVideoFilename = "";
-        let compressedVideoBlobUrl = null;
-        let compressedVideoFilename = "";
+        let mergedBlobUrl = null;
+        let mergedFilename = "";
+        let compressedBlobUrl = null;
+        let compressedFilename = "";
 
         // UI Selectors
-        const initContainer = document.getElementById('init-container');
-        const initStatus = document.getElementById('init-status');
-        const message = document.getElementById('message');
         const progressContainer = document.getElementById('progress-container');
         const processingProgress = document.getElementById('processing-progress');
         const statusText = document.getElementById('status-text');
+        const renderCanvas = document.getElementById('render-canvas');
+        const ctx = renderCanvas.getContext('2d', { alpha: false });
 
         const mergeDropZone = document.getElementById('merge-drop-zone');
         const mergeUploader = document.getElementById('merge-uploader');
@@ -386,9 +342,9 @@
         const compressFadeOut = document.getElementById('compress-fade-out');
 
         const resetMergeButton = () => {
-            if (mergedVideoBlobUrl) {
-                URL.revokeObjectURL(mergedVideoBlobUrl);
-                mergedVideoBlobUrl = null;
+            if (mergedBlobUrl) {
+                URL.revokeObjectURL(mergedBlobUrl);
+                mergedBlobUrl = null;
             }
             mergeBtn.classList.remove('ready-download');
             mergeBtn.innerText = "Merge Clips";
@@ -396,9 +352,9 @@
         };
 
         const resetCompressButton = () => {
-            if (compressedVideoBlobUrl) {
-                URL.revokeObjectURL(compressedVideoBlobUrl);
-                compressedVideoBlobUrl = null;
+            if (compressedBlobUrl) {
+                URL.revokeObjectURL(compressedBlobUrl);
+                compressedBlobUrl = null;
             }
             compressBtn.classList.remove('ready-download');
             compressBtn.innerText = "Compress & Trim";
@@ -415,18 +371,16 @@
         });
 
         const updateButtonStates = () => {
-            if (!isLoaded) return;
-
-            if (!mergedVideoBlobUrl) {
-                const needsMergeAudio = (mergeAudioMode.value === 'add_music' || mergeAudioMode.value === 'mute_and_add');
-                mergeBtn.disabled = mergeFiles.length < 2 || (needsMergeAudio && !mergeAudioFile);
+            if (!mergedBlobUrl) {
+                const needsAudio = (mergeAudioMode.value === 'add_music' || mergeAudioMode.value === 'mute_and_add');
+                mergeBtn.disabled = mergeFiles.length < 2 || (needsAudio && !mergeAudioFile);
             } else {
                 mergeBtn.disabled = false;
             }
 
-            if (!compressedVideoBlobUrl) {
-                const needsCompressAudio = (compressAudioMode.value === 'add_music' || compressAudioMode.value === 'mute_and_add');
-                compressBtn.disabled = !singleCompressFile || (needsCompressAudio && !compressAudioFile);
+            if (!compressedBlobUrl) {
+                const needsAudio = (compressAudioMode.value === 'add_music' || compressAudioMode.value === 'mute_and_add');
+                compressBtn.disabled = !singleCompressFile || (needsAudio && !compressAudioFile);
             } else {
                 compressBtn.disabled = false;
             }
@@ -445,107 +399,28 @@
             return orientation === 'horizontal' ? { width: w, height: h } : { width: h, height: w };
         };
 
-        // Creates a brand-new, isolated worker sandbox for each video pass
-        // Completely eliminates command collisions and RAM leaks
-        const createWorkerSession = async () => {
-            const instance = createFFmpeg({
-                log: false,
-                corePath: CORE_PATH,
-                mainName: 'main'
-            });
-            await instance.load();
-            return instance;
-        };
-
-        const loadFFmpeg = async () => {
-            try {
-                initStatus.innerText = "Verifying engine in browser cache...";
-                const testInstance = await createWorkerSession();
-                testInstance.exit();
-
-                isLoaded = true;
-                initContainer.style.display = 'none';
-                message.style.display = 'block';
-
-                document.querySelectorAll('input, select, .drop-zone').forEach(el => {
-                    if (el.classList.contains('drop-zone')) {
-                        el.classList.remove('disabled');
-                    } else {
-                        el.disabled = false;
-                    }
-                });
-
-                updateButtonStates();
-            } catch (err) {
-                console.error("Engine Load Error:", err);
-                initContainer.innerHTML = `<h3 style="color: #dc2626;">⚠️ Engine Load Error</h3><p style="font-size: 13px; color: #4b5563;">${err.message}. Please refresh the page.</p>`;
-            }
-        };
-
-        // Safe command runner that handles POSIX clean exit(0)
-        const safeRun = async (ff, ...args) => {
-            try {
-                await ff.run(...args);
-            } catch (err) {
-                const msg = String(err && err.message ? err.message : err);
-                if (msg.includes('exit(0)')) {
-                    return;
-                }
-                throw err;
-            }
-        };
-
-        // Instant In-Browser Audio Track Scanner (<1ms)
-        const checkAudioTrack = async (file) => {
-            try {
-                const slice = file.slice(0, Math.min(file.size, 2 * 1024 * 1024));
-                const buf = new Uint8Array(await slice.arrayBuffer());
-                for (let i = 0; i < buf.length - 4; i++) {
-                    if (buf[i] === 0x73 && buf[i+1] === 0x6f && buf[i+2] === 0x75 && buf[i+3] === 0x6e) {
-                        return true;
-                    }
-                }
-                if (file.size > 2 * 1024 * 1024) {
-                    const tailSlice = file.slice(file.size - 1024 * 1024);
-                    const tailBuf = new Uint8Array(await tailSlice.arrayBuffer());
-                    for (let i = 0; i < tailBuf.length - 4; i++) {
-                        if (tailBuf[i] === 0x73 && tailBuf[i+1] === 0x6f && tailBuf[i+2] === 0x75 && tailBuf[i+3] === 0x6e) {
-                            return true;
-                        }
-                    }
-                }
-                return false;
-            } catch (e) {
-                return true;
-            }
-        };
-
-        // Reads video metadata to auto-detect best resolution and orientation
         const probeVideoMetadata = (file) => {
             return new Promise((resolve) => {
-                const video = document.createElement('video');
-                video.preload = 'metadata';
-                video.onloadedmetadata = () => {
-                    const w = video.videoWidth || 0;
-                    const h = video.videoHeight || 0;
-                    const dur = video.duration || 0.1;
-                    URL.revokeObjectURL(video.src);
+                const v = document.createElement('video');
+                v.preload = 'metadata';
+                v.onloadedmetadata = () => {
+                    const w = v.videoWidth || 0;
+                    const h = v.videoHeight || 0;
+                    const dur = v.duration || 0.1;
+                    URL.revokeObjectURL(v.src);
                     resolve({ width: w, height: h, duration: dur });
                 };
-                video.onerror = () => {
-                    resolve({ width: 0, height: 0, duration: 0.1 });
-                };
-                video.src = URL.createObjectURL(file);
+                v.onerror = () => resolve({ width: 0, height: 0, duration: 0.1 });
+                v.src = URL.createObjectURL(file);
             });
         };
 
-        // Sets default resolution and orientation according to uploaded video dimensions
-        const autoConfigureSettingsFromFiles = async (fileList) => {
-            if (!fileList || fileList.length === 0) return;
-            const meta = await probeVideoMetadata(fileList[0]);
+        // Automatically configure optimal resolution and orientation
+        const autoConfigureFromClips = async (files) => {
+            if (!files || files.length === 0) return;
+            const meta = await probeVideoMetadata(files[0]);
             if (!meta.width || !meta.height) return;
 
-            // 1. Auto-select orientation
             if (meta.height > meta.width) {
                 mergeOrientation.value = 'vertical';
                 orientationAutoBadge.innerText = '(Auto: Portrait 9:16)';
@@ -554,30 +429,29 @@
                 orientationAutoBadge.innerText = '(Auto: Landscape 16:9)';
             }
 
-            // 2. Auto-select best resolution based on max dimension
             const maxDim = Math.max(meta.width, meta.height);
-            let chosenRes = '1080';
-            if (maxDim >= 3000) chosenRes = '2160';
-            else if (maxDim >= 2000) chosenRes = '1440';
-            else if (maxDim >= 1500) chosenRes = '1080';
-            else if (maxDim >= 1000) chosenRes = '720';
-            else chosenRes = '480';
+            let res = '1080';
+            if (maxDim >= 3000) res = '2160';
+            else if (maxDim >= 2000) res = '1440';
+            else if (maxDim >= 1500) res = '1080';
+            else if (maxDim >= 1000) res = '720';
+            else res = '480';
 
-            mergeResolution.value = chosenRes;
-            resAutoBadge.innerText = `(Auto: ${chosenRes}p)`;
+            mergeResolution.value = res;
+            resAutoBadge.innerText = `(Auto: ${res}p)`;
         };
 
         const setupDropZone = (dropZone, uploader, handleFiles) => {
-            dropZone.addEventListener('click', () => { if (!uploader.disabled) uploader.click(); });
+            dropZone.addEventListener('click', () => uploader.click());
             dropZone.addEventListener('dragover', (e) => {
                 e.preventDefault();
-                if (!uploader.disabled) dropZone.classList.add('dragover');
+                dropZone.classList.add('dragover');
             });
             dropZone.addEventListener('dragleave', () => dropZone.classList.remove('dragover'));
             dropZone.addEventListener('drop', (e) => {
                 e.preventDefault();
                 dropZone.classList.remove('dragover');
-                if (!uploader.disabled && e.dataTransfer.files) handleFiles(e.dataTransfer.files);
+                if (e.dataTransfer.files) handleFiles(e.dataTransfer.files);
             });
             uploader.addEventListener('change', (e) => {
                 if (e.target.files) handleFiles(e.target.files);
@@ -598,9 +472,8 @@
             resetMergeButton();
             renderMergeList();
 
-            // Auto-detect resolution & orientation from first uploaded video
             if (mergeFiles.length > 0) {
-                await autoConfigureSettingsFromFiles(mergeFiles);
+                await autoConfigureFromClips(mergeFiles);
             }
         };
 
@@ -650,12 +523,10 @@
             orientationAutoBadge.innerText = '';
             resetMergeButton();
         });
-
         mergeResolution.addEventListener('change', () => {
             resAutoBadge.innerText = '';
             resetMergeButton();
         });
-
         mergeFormat.addEventListener('change', resetMergeButton);
         mergeLoopMusic.addEventListener('change', resetMergeButton);
 
@@ -684,7 +555,6 @@
             compressAudioWrapper.style.display = needsAudio ? 'block' : 'none';
             resetCompressButton();
         });
-
         compressFormat.addEventListener('change', resetCompressButton);
         compressLoopMusic.addEventListener('change', resetCompressButton);
         trimStartInput.addEventListener('input', resetCompressButton);
@@ -698,14 +568,6 @@
             }
         });
 
-        const buildAudioFadeFilter = (totalDuration, shouldFade, fadeInSec, fadeOutSec, inputLabel = 'bg_raw', outputLabel = 'bgmusic') => {
-            if (!shouldFade || totalDuration <= 0.5) return `[${inputLabel}]anull[${outputLabel}]`;
-            const fIn = Math.min(parseFloat(fadeInSec) || 2.0, totalDuration / 2);
-            const fOut = Math.min(parseFloat(fadeOutSec) || 3.0, totalDuration / 2);
-            const startOut = Math.max(0, totalDuration - fOut);
-            return `[${inputLabel}]afade=t=in:st=0:d=${fIn},afade=t=out:st=${startOut.toFixed(2)}:d=${fOut.toFixed(2)}[${outputLabel}]`;
-        };
-
         const triggerDownload = (blobUrl, filename) => {
             const a = document.createElement('a');
             a.style.display = 'none';
@@ -716,152 +578,301 @@
             document.body.removeChild(a);
         };
 
-        // --- MERGE ACTION (Isolated Worker Sandboxes & Concat Demuxer) ---
+        // --- Fast Offline In-Browser MP3 Encoder ---
+        const encodeAudioBufferToMp3 = (audioBuffer) => {
+            const channels = audioBuffer.numberOfChannels;
+            const sampleRate = audioBuffer.sampleRate;
+            const mp3encoder = new lamejs.Mp3Encoder(channels, sampleRate, 192);
+            const mp3Data = [];
+
+            const left = audioBuffer.getChannelData(0);
+            const right = channels > 1 ? audioBuffer.getChannelData(1) : left;
+
+            const sampleBlockSize = 1152;
+            const leftInt16 = new Int16Array(sampleBlockSize);
+            const rightInt16 = new Int16Array(sampleBlockSize);
+
+            for (let i = 0; i < left.length; i += sampleBlockSize) {
+                const chunkLen = Math.min(sampleBlockSize, left.length - i);
+                for (let j = 0; j < chunkLen; j++) {
+                    const lVal = Math.max(-1, Math.min(1, left[i + j]));
+                    const rVal = Math.max(-1, Math.min(1, right[i + j]));
+                    leftInt16[j] = lVal < 0 ? lVal * 0x8000 : lVal * 0x7FFF;
+                    rightInt16[j] = rVal < 0 ? rVal * 0x8000 : rVal * 0x7FFF;
+                }
+                const mp3buf = mp3encoder.encodeBuffer(leftInt16, rightInt16);
+                if (mp3buf.length > 0) mp3Data.push(mp3buf);
+            }
+            const mp3buf = mp3encoder.flush();
+            if (mp3buf.length > 0) mp3Data.push(mp3buf);
+
+            return new Blob(mp3Data, { type: 'audio/mp3' });
+        };
+
+        // --- Core Hardware-Accelerated Merger Engine ---
         mergeBtn.addEventListener('click', async () => {
-            if (mergedVideoBlobUrl) {
-                triggerDownload(mergedVideoBlobUrl, mergedVideoFilename);
+            if (mergedBlobUrl) {
+                triggerDownload(mergedBlobUrl, mergedFilename);
                 return;
             }
 
-            if (!isLoaded || mergeFiles.length < 2) return;
+            if (mergeFiles.length < 2) return;
             progressContainer.style.display = 'block';
             processingProgress.value = 0;
             mergeBtn.disabled = true;
-            mergeBtn.innerText = "Merging...";
+            mergeBtn.innerText = "Rendering...";
 
-            const encodedPartBuffers = [];
-            let totalMergedDuration = 0;
+            const format = mergeFormat.value;
+            const orientation = mergeOrientation.value;
+            const resolution = mergeResolution.value;
+            const audioMode = mergeAudioMode.value;
 
             try {
-                const outExt = mergeFormat.value;
-                const outputName = `merged_output.${outExt}`;
-                const audioMode = mergeAudioMode.value;
-                const count = mergeFiles.length;
+                // Determine dimensions
+                const { width: targetW, height: targetH } = getDimensions(orientation, resolution);
+                renderCanvas.width = targetW;
+                renderCanvas.height = targetH;
 
-                const { width: targetW, height: targetH } = getDimensions(mergeOrientation.value, mergeResolution.value);
+                // Web Audio Context setup
+                const AudioCtx = window.AudioContext || window.webkitAudioContext;
+                const audioCtx = new AudioCtx();
+                const destNode = audioCtx.createMediaStreamDestination();
 
-                // Stage 1: Standardize each clip in an isolated worker session
-                // Completely frees RAM upon completion of each clip
-                for (let i = 0; i < count; i++) {
-                    const meta = await probeVideoMetadata(mergeFiles[i]);
-                    totalMergedDuration += meta.duration;
+                // Optional Background Music Setup
+                let bgAudioBuffer = null;
+                if ((audioMode === 'add_music' || audioMode === 'mute_and_add') && mergeAudioFile) {
+                    statusText.innerText = "Loading background audio...";
+                    const bgArrayBuf = await mergeAudioFile.arrayBuffer();
+                    bgAudioBuffer = await audioCtx.decodeAudioData(bgArrayBuf);
+                }
 
-                    statusText.innerText = `Standardizing clip ${i + 1} of ${count} (${mergeFiles[i].name})...`;
-                    processingProgress.value = Math.round((i / count) * 85);
+                // If user selected MP3 Extraction
+                if (format === 'mp3') {
+                    statusText.innerText = "Extracting and mixing audio tracks to MP3...";
+                    processingProgress.value = 30;
 
-                    const hasAudio = await checkAudioTrack(mergeFiles[i]);
-                    const session = await createWorkerSession();
+                    let totalDuration = 0;
+                    const decodedBuffers = [];
 
-                    const inName = `in_${i}.mov`;
-                    const partName = `part_${i}.ts`;
-
-                    session.FS('writeFile', inName, await fetchFile(mergeFiles[i]));
-
-                    // Even-pixel guarantee scale filter with centered black padding
-                    const videoFilter = `scale=${targetW}:${targetH}:force_original_aspect_ratio=decrease,scale=trunc(iw/2)*2:trunc(ih/2)*2,pad=${targetW}:${targetH}:-1:-1:color=black,setsar=1,fps=30,format=yuv420p`;
-
-                    if (hasAudio) {
-                        await safeRun(
-                            session,
-                            '-i', inName,
-                            '-vf', videoFilter,
-                            '-vcodec', 'libx264', '-crf', '24', '-preset', 'ultrafast', '-tune', 'fastdecode',
-                            '-c:a', 'aac', '-ar', '44100', '-ac', '2',
-                            partName
-                        );
-                    } else {
-                        // Generate silent track for silent input clips
-                        await safeRun(
-                            session,
-                            '-i', inName,
-                            '-f', 'lavfi', '-i', 'anullsrc=channel_layout=stereo:sample_rate=44100',
-                            '-vf', videoFilter,
-                            '-map', '0:v:0', '-map', '1:a:0',
-                            '-vcodec', 'libx264', '-crf', '24', '-preset', 'ultrafast', '-tune', 'fastdecode',
-                            '-c:a', 'aac', '-shortest',
-                            partName
-                        );
+                    for (let i = 0; i < mergeFiles.length; i++) {
+                        statusText.innerText = `Extracting audio (${i + 1}/${mergeFiles.length})...`;
+                        const arrayBuf = await mergeFiles[i].arrayBuffer();
+                        try {
+                            const buf = await audioCtx.decodeAudioData(arrayBuf);
+                            decodedBuffers.push(buf);
+                            totalDuration += buf.duration;
+                        } catch (e) {
+                            // Video might have no audio track, skip cleanly
+                        }
                     }
 
-                    const partData = session.FS('readFile', partName);
-                    encodedPartBuffers.push(partData);
-
-                    // Terminate worker session to immediately release memory back to operating system
-                    session.exit();
-                }
-
-                // Stage 2: Lossless Final Concat in Fresh Worker Session
-                statusText.innerText = "Stitching sequence together...";
-                processingProgress.value = 90;
-
-                const finalSession = await createWorkerSession();
-
-                for (let i = 0; i < count; i++) {
-                    finalSession.FS('writeFile', `part_${i}.ts`, encodedPartBuffers[i]);
-                }
-
-                const concatManifest = encodedPartBuffers.map((_, i) => `file 'part_${i}.ts'`).join('\n');
-                finalSession.FS('writeFile', 'concat.txt', concatManifest);
-
-                if (audioMode === 'mute') {
-                    await safeRun(
-                        finalSession,
-                        '-f', 'concat', '-safe', '0', '-i', 'concat.txt',
-                        '-c:v', 'copy',
-                        '-an',
-                        outputName
-                    );
-                } else if ((audioMode === 'mute_and_add' || audioMode === 'add_music') && mergeAudioFile) {
-                    finalSession.FS('writeFile', 'bg_music.mp3', await fetchFile(mergeAudioFile));
-                    
-                    let bgArgs = [];
-                    if (mergeLoopMusic.checked) bgArgs.push('-stream_loop', '-1');
-                    bgArgs.push('-i', 'bg_music.mp3');
-
-                    const fadeFilter = buildAudioFadeFilter(totalMergedDuration, mergeFadeMusic.checked, mergeFadeIn.value, mergeFadeOut.value, '1:a', 'faded_bg');
-
-                    if (audioMode === 'mute_and_add') {
-                        await safeRun(
-                            finalSession,
-                            '-f', 'concat', '-safe', '0', '-i', 'concat.txt',
-                            ...bgArgs,
-                            '-filter_complex', fadeFilter,
-                            '-map', '0:v:0', '-map', '[faded_bg]',
-                            '-c:v', 'copy', '-c:a', 'aac', '-shortest',
-                            outputName
-                        );
-                    } else {
-                        await safeRun(
-                            finalSession,
-                            '-f', 'concat', '-safe', '0', '-i', 'concat.txt',
-                            ...bgArgs,
-                            '-filter_complex', `${fadeFilter};[0:a][faded_bg]amix=inputs=2:duration=first:dropout_transition=2[mixed_a]`,
-                            '-map', '0:v:0', '-map', '[mixed_a]',
-                            '-c:v', 'copy', '-c:a', 'aac',
-                            outputName
-                        );
+                    if (decodedBuffers.length === 0 && !bgAudioBuffer) {
+                        throw new Error("No audio tracks found in selected videos to extract.");
                     }
-                } else {
-                    await safeRun(
-                        finalSession,
-                        '-f', 'concat', '-safe', '0', '-i', 'concat.txt',
-                        '-c', 'copy',
-                        outputName
-                    );
+
+                    // Render mixed offline audio
+                    const offlineCtx = new OfflineAudioContext(2, Math.max(1, Math.ceil(totalDuration * 44100)), 44100);
+                    let offset = 0;
+
+                    if (audioMode !== 'mute_and_add') {
+                        for (const buf of decodedBuffers) {
+                            const src = offlineCtx.createBufferSource();
+                            src.buffer = buf;
+                            src.connect(offlineCtx.destination);
+                            src.start(offset);
+                            offset += buf.duration;
+                        }
+                    } else {
+                        offset = totalDuration || (bgAudioBuffer ? bgAudioBuffer.duration : 10);
+                    }
+
+                    if (bgAudioBuffer) {
+                        const bgSrc = offlineCtx.createBufferSource();
+                        bgSrc.buffer = bgAudioBuffer;
+                        bgSrc.loop = mergeLoopMusic.checked;
+                        const gain = offlineCtx.createGain();
+
+                        if (mergeFadeMusic.checked) {
+                            const fIn = parseFloat(mergeFadeIn.value) || 2;
+                            const fOut = parseFloat(mergeFadeOut.value) || 3;
+                            gain.gain.setValueAtTime(0, 0);
+                            gain.gain.linearRampToValueAtTime(1, Math.min(fIn, offset / 2));
+                            gain.gain.setValueAtTime(1, Math.max(0, offset - fOut));
+                            gain.gain.linearRampToValueAtTime(0, offset);
+                        }
+
+                        bgSrc.connect(gain);
+                        gain.connect(offlineCtx.destination);
+                        bgSrc.start(0);
+                    }
+
+                    const renderedBuffer = await offlineCtx.startRendering();
+                    statusText.innerText = "Encoding MP3...";
+                    processingProgress.value = 80;
+
+                    const mp3Blob = encodeAudioBufferToMp3(renderedBuffer);
+                    mergedBlobUrl = URL.createObjectURL(mp3Blob);
+                    mergedFilename = `merged_audio.mp3`;
+
+                    processingProgress.value = 100;
+                    mergeBtn.innerText = `⬇️ Download Audio (.MP3)`;
+                    mergeBtn.classList.add('ready-download');
+                    mergeBtn.disabled = false;
+                    statusText.innerText = "Done! Audio extracted cleanly.";
+                    return;
                 }
 
-                const fileBytes = finalSession.FS('readFile', outputName);
-                if (mergedVideoBlobUrl) URL.revokeObjectURL(mergedVideoBlobUrl);
-                mergedVideoBlobUrl = URL.createObjectURL(new Blob([fileBytes.buffer], { type: `video/${outExt}` }));
-                mergedVideoFilename = `merged_video_${mergeResolution.value}p.${outExt}`;
+                // Video rendering pipeline using Native MediaStream & Hardware MediaRecorder
+                statusText.innerText = "Preparing hardware canvas renderer...";
+                const stream = renderCanvas.captureStream(30);
 
-                finalSession.exit();
+                // Attach audio to stream
+                if (audioMode !== 'mute') {
+                    const audioTracks = destNode.stream.getAudioTracks();
+                    if (audioTracks.length > 0) {
+                        stream.addTrack(audioTracks[0]);
+                    }
+                }
+
+                // Choose best MP4 codec supported by user's browser
+                let mimeType = 'video/mp4';
+                if (!MediaRecorder.isTypeSupported(mimeType)) {
+                    mimeType = 'video/mp4;codecs=avc1';
+                }
+                if (!MediaRecorder.isTypeSupported(mimeType)) {
+                    mimeType = 'video/mp4;codecs=avc1,mp4a.40.2';
+                }
+                if (!MediaRecorder.isTypeSupported(mimeType)) {
+                    mimeType = 'video/webm;codecs=h264'; // Fallback container if MP4 muxer is unavailable in Firefox
+                }
+
+                const recorder = new MediaRecorder(stream, {
+                    mimeType: mimeType,
+                    videoBitsPerSecond: targetW > 1920 ? 16000000 : 8000000
+                });
+
+                const recordedChunks = [];
+                recorder.ondataavailable = (e) => {
+                    if (e.data.size > 0) recordedChunks.push(e.data);
+                };
+
+                const recordingFinished = new Promise((resolve) => {
+                    recorder.onstop = () => resolve();
+                });
+
+                recorder.start(100);
+
+                // Background Music Player Node
+                let bgSource = null;
+                let bgGain = null;
+                if (bgAudioBuffer) {
+                    bgSource = audioCtx.createBufferSource();
+                    bgSource.buffer = bgAudioBuffer;
+                    bgSource.loop = mergeLoopMusic.checked;
+                    bgGain = audioCtx.createGain();
+
+                    if (mergeFadeMusic.checked) {
+                        bgGain.gain.setValueAtTime(0, audioCtx.currentTime);
+                        bgGain.gain.linearRampToValueAtTime(1, audioCtx.currentTime + (parseFloat(mergeFadeIn.value) || 2));
+                    }
+                    bgSource.connect(bgGain);
+                    bgGain.connect(destNode);
+                    bgSource.start();
+                }
+
+                // Play & Draw Clips Sequentially onto Canvas with Centered Black Bars
+                for (let i = 0; i < mergeFiles.length; i++) {
+                    const file = mergeFiles[i];
+                    statusText.innerText = `Rendering clip ${i + 1} of ${mergeFiles.length} (${file.name})...`;
+                    processingProgress.value = Math.round((i / mergeFiles.length) * 95);
+
+                    await new Promise(async (resolveClip) => {
+                        const v = document.createElement('video');
+                        v.muted = false;
+                        v.playsInline = true;
+                        v.src = URL.createObjectURL(file);
+
+                        let vSource = null;
+                        if (audioMode === 'original' || audioMode === 'add_music') {
+                            try {
+                                vSource = audioCtx.createMediaElementSource(v);
+                                vSource.connect(destNode);
+                            } catch (e) {}
+                        }
+
+                        v.onloadedmetadata = () => {
+                            // Compute centered letterbox/pillarbox geometry
+                            const vW = v.videoWidth;
+                            const vH = v.videoHeight;
+                            const vAspect = vW / vH;
+                            const tAspect = targetW / targetH;
+
+                            let drawW, drawH, drawX, drawY;
+                            if (vAspect > tAspect) {
+                                drawW = targetW;
+                                drawH = Math.round(targetW / vAspect);
+                                drawX = 0;
+                                drawY = Math.round((targetH - drawH) / 2);
+                            } else {
+                                drawH = targetH;
+                                drawW = Math.round(targetH * vAspect);
+                                drawY = 0;
+                                drawX = Math.round((targetW - drawW) / 2);
+                            }
+
+                            // Render loop at 30 fps
+                            let animId = null;
+                            const renderFrame = () => {
+                                if (!v.paused && !v.ended) {
+                                    ctx.fillStyle = "#000000";
+                                    ctx.fillRect(0, 0, targetW, targetH);
+                                    ctx.drawImage(v, drawX, drawY, drawW, drawH);
+                                    animId = requestAnimationFrame(renderFrame);
+                                }
+                            };
+
+                            v.onplay = () => {
+                                renderFrame();
+                            };
+
+                            v.onended = () => {
+                                if (animId) cancelAnimationFrame(animId);
+                                if (vSource) try { vSource.disconnect(); } catch (e) {}
+                                URL.revokeObjectURL(v.src);
+                                resolveClip();
+                            };
+
+                            v.play().catch(() => {
+                                // Fallback if autoplay restricted
+                                v.muted = true;
+                                v.play();
+                            });
+                        };
+                    });
+                }
+
+                if (bgGain && mergeFadeMusic.checked) {
+                    const fOut = parseFloat(mergeFadeOut.value) || 3;
+                    bgGain.gain.setValueAtTime(1, audioCtx.currentTime);
+                    bgGain.gain.linearRampToValueAtTime(0, audioCtx.currentTime + fOut);
+                }
+
+                // Stop recorder
+                recorder.stop();
+                await recordingFinished;
+
+                if (bgSource) try { bgSource.stop(); } catch (e) {}
+                audioCtx.close();
+
+                const videoBlob = new Blob(recordedChunks, { type: 'video/mp4' });
+                mergedBlobUrl = URL.createObjectURL(videoBlob);
+                mergedFilename = `merged_video_${resolution}p.mp4`;
 
                 processingProgress.value = 100;
-                mergeBtn.innerText = `⬇️ Download Merged Video (.${outExt.toUpperCase()})`;
+                mergeBtn.innerText = `⬇️ Download Merged Video (.MP4)`;
                 mergeBtn.classList.add('ready-download');
                 mergeBtn.disabled = false;
-                statusText.innerText = `Done! All ${count} clips merged cleanly. Click button to download.`;
+                statusText.innerText = `Done! All ${mergeFiles.length} clips merged cleanly into MP4.`;
 
             } catch (err) {
                 console.error("Merge error:", err);
@@ -871,107 +882,141 @@
             }
         });
 
-        // --- COMPRESS ACTION ---
+        // --- Core Compressor & Trimmer Engine ---
         compressBtn.addEventListener('click', async () => {
-            if (compressedVideoBlobUrl) {
-                triggerDownload(compressedVideoBlobUrl, compressedVideoFilename);
+            if (compressedBlobUrl) {
+                triggerDownload(compressedBlobUrl, compressedFilename);
                 return;
             }
 
-            if (!isLoaded || !singleCompressFile) return;
+            if (!singleCompressFile) return;
             progressContainer.style.display = 'block';
-            statusText.innerText = "Compressing, trimming & mixing audio...";
+            statusText.innerText = "Processing compression & trim...";
             processingProgress.value = 0;
             compressBtn.disabled = true;
             compressBtn.innerText = "Compressing...";
 
+            const format = compressFormat.value;
+            const audioMode = compressAudioMode.value;
+
             try {
-                const session = await createWorkerSession();
-                const outExt = compressFormat.value;
-                const outputName = `compressed_output.${outExt}`;
-                const inputName = 'input_compress.mov';
-                const audioMode = compressAudioMode.value;
-                
-                session.FS('writeFile', inputName, await fetchFile(singleCompressFile));
                 const meta = await probeVideoMetadata(singleCompressFile);
+                const trimStart = Math.max(0, parseFloat(trimStartInput.value) || 0);
+                const trimEnd = Math.max(0, parseFloat(trimEndInput.value) || 0);
+                const targetDur = Math.max(0.1, meta.duration - trimStart - trimEnd);
 
-                const trimStart = parseFloat(trimStartInput.value) || 0;
-                const trimEnd = parseFloat(trimEndInput.value) || 0;
-                const targetDuration = Math.max(0.1, meta.duration - trimStart - trimEnd);
+                const AudioCtx = window.AudioContext || window.webkitAudioContext;
+                const audioCtx = new AudioCtx();
+                const destNode = audioCtx.createMediaStreamDestination();
 
-                const evenScaleFilter = 'scale=trunc(iw/2)*2:trunc(ih/2)*2';
+                // If MP3 Extraction
+                if (format === 'mp3') {
+                    statusText.innerText = "Extracting audio to MP3...";
+                    const arrayBuf = await singleCompressFile.arrayBuffer();
+                    const decodedBuf = await audioCtx.decodeAudioData(arrayBuf);
 
-                if (audioMode === 'mute') {
-                    await safeRun(
-                        session,
-                        '-ss', trimStart.toString(), '-i', inputName,
-                        '-t', targetDuration.toString(),
-                        '-vf', evenScaleFilter,
-                        '-vcodec', 'libx264', '-crf', '28', '-preset', 'ultrafast', '-tune', 'fastdecode',
-                        '-pix_fmt', 'yuv420p', '-an', outputName
-                    );
-                } else if ((audioMode === 'mute_and_add' || audioMode === 'add_music') && compressAudioFile) {
-                    session.FS('writeFile', 'compress_bg.mp3', await fetchFile(compressAudioFile));
+                    const offlineCtx = new OfflineAudioContext(2, Math.max(1, Math.ceil(targetDur * 44100)), 44100);
+                    const src = offlineCtx.createBufferSource();
+                    src.buffer = decodedBuf;
+                    src.connect(offlineCtx.destination);
+                    src.start(0, trimStart, targetDur);
 
-                    const isLoop = compressLoopMusic.checked;
-                    const isFade = compressFadeMusic.checked;
-                    const fIn = compressFadeIn.value;
-                    const fOut = compressFadeOut.value;
+                    const rendered = await offlineCtx.startRendering();
+                    const mp3Blob = encodeAudioBufferToMp3(rendered);
 
-                    let bgAudioInputArgs = [];
-                    if (isLoop) bgAudioInputArgs.push('-stream_loop', '-1');
-                    bgAudioInputArgs.push('-i', 'compress_bg.mp3');
+                    compressedBlobUrl = URL.createObjectURL(mp3Blob);
+                    compressedFilename = `extracted_audio.mp3`;
 
-                    const fadeFilter = buildAudioFadeFilter(targetDuration, isFade, fIn, fOut, '1:a', 'bgmusic');
-
-                    if (audioMode === 'mute_and_add') {
-                        await safeRun(
-                            session,
-                            '-ss', trimStart.toString(), '-i', inputName,
-                            ...bgAudioInputArgs,
-                            '-filter_complex', `[0:v]${evenScaleFilter}[v];${fadeFilter}`,
-                            '-t', targetDuration.toString(),
-                            '-map', '[v]', '-map', '[bgmusic]',
-                            '-vcodec', 'libx264', '-crf', '28', '-preset', 'ultrafast', '-tune', 'fastdecode',
-                            '-pix_fmt', 'yuv420p', '-c:a', 'aac',
-                            outputName
-                        );
-                    } else {
-                        await safeRun(
-                            session,
-                            '-ss', trimStart.toString(), '-i', inputName,
-                            ...bgAudioInputArgs,
-                            '-filter_complex', `[0:v]${evenScaleFilter}[v];${fadeFilter};[0:a][bgmusic]amix=inputs=2:duration=first:dropout_transition=2[mixed]`,
-                            '-t', targetDuration.toString(),
-                            '-map', '[v]', '-map', '[mixed]',
-                            '-vcodec', 'libx264', '-crf', '28', '-preset', 'ultrafast', '-tune', 'fastdecode',
-                            '-pix_fmt', 'yuv420p', '-c:a', 'aac',
-                            outputName
-                        );
-                    }
-                } else {
-                    await safeRun(
-                        session,
-                        '-ss', trimStart.toString(), '-i', inputName,
-                        '-t', targetDuration.toString(),
-                        '-vf', evenScaleFilter,
-                        '-vcodec', 'libx264', '-crf', '28', '-preset', 'ultrafast', '-tune', 'fastdecode',
-                        '-pix_fmt', 'yuv420p', '-c:a', 'aac',
-                        outputName
-                    );
+                    processingProgress.value = 100;
+                    compressBtn.innerText = `⬇️ Download Audio (.MP3)`;
+                    compressBtn.classList.add('ready-download');
+                    compressBtn.disabled = false;
+                    statusText.innerText = "Done! Audio extracted cleanly.";
+                    return;
                 }
 
-                const fileBytes = session.FS('readFile', outputName);
-                if (compressedVideoBlobUrl) URL.revokeObjectURL(compressedVideoBlobUrl);
-                compressedVideoBlobUrl = URL.createObjectURL(new Blob([fileBytes.buffer], { type: `video/${outExt}` }));
-                compressedVideoFilename = `compressed_video.${outExt}`;
+                // Video Compress
+                renderCanvas.width = meta.width;
+                renderCanvas.height = meta.height;
+                const stream = renderCanvas.captureStream(30);
 
-                session.exit();
+                if (audioMode !== 'mute') {
+                    const audioTracks = destNode.stream.getAudioTracks();
+                    if (audioTracks.length > 0) stream.addTrack(audioTracks[0]);
+                }
 
-                compressBtn.innerText = `⬇️ Download Compressed Video (.${outExt.toUpperCase()})`;
+                let mimeType = 'video/mp4';
+                if (!MediaRecorder.isTypeSupported(mimeType)) mimeType = 'video/mp4;codecs=avc1';
+                if (!MediaRecorder.isTypeSupported(mimeType)) mimeType = 'video/webm;codecs=h264';
+
+                const recorder = new MediaRecorder(stream, {
+                    mimeType: mimeType,
+                    videoBitsPerSecond: 3500000 // Optimized web bitrate
+                });
+
+                const recordedChunks = [];
+                recorder.ondataavailable = (e) => {
+                    if (e.data.size > 0) recordedChunks.push(e.data);
+                };
+
+                const finished = new Promise((resolve) => recorder.onstop = resolve);
+                recorder.start(100);
+
+                await new Promise((resolveVideo) => {
+                    const v = document.createElement('video');
+                    v.muted = false;
+                    v.playsInline = true;
+                    v.src = URL.createObjectURL(singleCompressFile);
+
+                    let vSource = null;
+                    if (audioMode === 'original' || audioMode === 'add_music') {
+                        try {
+                            vSource = audioCtx.createMediaElementSource(v);
+                            vSource.connect(destNode);
+                        } catch (e) {}
+                    }
+
+                    v.onloadedmetadata = () => {
+                        v.currentTime = trimStart;
+                    };
+
+                    v.onseeked = () => {
+                        let animId = null;
+                        const render = () => {
+                            if (!v.paused && !v.ended) {
+                                ctx.drawImage(v, 0, 0, meta.width, meta.height);
+                                const progress = ((v.currentTime - trimStart) / targetDur) * 95;
+                                processingProgress.value = Math.max(0, Math.min(95, Math.round(progress)));
+
+                                if (v.currentTime >= trimStart + targetDur) {
+                                    v.pause();
+                                    if (animId) cancelAnimationFrame(animId);
+                                    if (vSource) try { vSource.disconnect(); } catch (e) {}
+                                    URL.revokeObjectURL(v.src);
+                                    resolveVideo();
+                                    return;
+                                }
+                                animId = requestAnimationFrame(render);
+                            }
+                        };
+                        v.play();
+                        render();
+                    };
+                });
+
+                recorder.stop();
+                await finished;
+                audioCtx.close();
+
+                const videoBlob = new Blob(recordedChunks, { type: 'video/mp4' });
+                compressedBlobUrl = URL.createObjectURL(videoBlob);
+                compressedFilename = `compressed_video.mp4`;
+
+                processingProgress.value = 100;
+                compressBtn.innerText = `⬇️ Download Compressed Video (.MP4)`;
                 compressBtn.classList.add('ready-download');
                 compressBtn.disabled = false;
-                statusText.innerText = "Done! Click button to download.";
+                statusText.innerText = "Done! Video compressed & trimmed.";
 
             } catch (err) {
                 console.error("Compress error:", err);
@@ -980,8 +1025,6 @@
                 resetCompressButton();
             }
         });
-
-        loadFFmpeg();
     </script>
 </body>
 </html>
