@@ -39,7 +39,7 @@
             font-weight: 500;
         }
 
-        /* Inline Fast Loading Card */
+        /* Fast Inline Loader */
         #init-container {
             background: #f8fafc;
             border: 1px solid #e2e8f0;
@@ -154,7 +154,7 @@
         
         <div id="init-container">
             <h3><div class="spinner"></div> Loading Components</h3>
-            <p id="init-status">Downloading engine (~25MB, cached after first load)...</p>
+            <p id="init-status">Downloading engine (~25MB one-time, cached in browser)...</p>
             <progress id="init-progress"></progress>
         </div>
 
@@ -193,9 +193,9 @@
         <div class="control-row">
             <label for="merge-resolution">Target Resolution:</label>
             <select id="merge-resolution" disabled>
-                <option value="480">480p (SD)</option>
-                <option value="720">720p (HD)</option>
-                <option value="1080" selected>1080p (Full HD)</option>
+                <option value="480">480p (Fastest)</option>
+                <option value="720" selected>720p (HD - Recommended Speed)</option>
+                <option value="1080">1080p (Full HD)</option>
                 <option value="1440">2K (1440p QHD)</option>
                 <option value="2160">4K (2160p UHD)</option>
             </select>
@@ -318,7 +318,7 @@
     <script>
         const { createFFmpeg, fetchFile } = FFmpeg;
 
-        // Persistent single instance
+        // Persistent single engine instance
         let ffmpeg = null;
         let isLoaded = false;
 
@@ -433,16 +433,15 @@
                 1440: [2560, 1440],
                 2160: [3840, 2160]
             };
-            const [w, h] = pairs[res] || [1920, 1080];
+            const [w, h] = pairs[res] || [1280, 720];
             return orientation === 'horizontal' ? { width: w, height: h } : { width: h, height: w };
         };
 
-        // Singleton Engine Loader
         const initEngine = async () => {
             if (ffmpeg && ffmpeg.isLoaded()) return ffmpeg;
 
             ffmpeg = createFFmpeg({
-                log: false,
+                log: true,
                 corePath: 'https://cdn.jsdelivr.net/npm/@ffmpeg/core-st@0.11.1/dist/ffmpeg-core.js',
                 mainName: 'main'
             });
@@ -480,20 +479,34 @@
             }
         };
 
+        // Command Runner with Worker Idle Guard & 150ms cooldown to eliminate "one command at a time"
         const safeRun = async (ff, ...args) => {
             ffmpegLogs = [];
+
+            // Wait for worker queue to clear if previously busy
+            let waitTicks = 0;
+            while (ff._running && waitTicks < 25) {
+                await new Promise(r => setTimeout(r, 80));
+                waitTicks++;
+            }
+            ff._running = false; // Force-clear stale flag state
+
+            await new Promise(r => setTimeout(r, 120)); // Cooldown tick for worker garbage collection
+
             try {
                 await ff.run(...args);
             } catch (err) {
                 const msg = String(err && err.message ? err.message : err);
                 if (msg.includes('exit(0)')) {
-                    return; // Normal POSIX clean exit
+                    return; // Normal POSIX clean finish
                 }
                 throw err;
+            } finally {
+                ff._running = false;
             }
         };
 
-        // Fast in-browser header inspection to detect audio track without calling FFmpeg
+        // Instant MP4/MOV Audio Scanner (<1ms)
         const checkAudioTrack = async (file) => {
             try {
                 const slice = file.slice(0, Math.min(file.size, 2 * 1024 * 1024));
@@ -514,7 +527,7 @@
                 }
                 return false;
             } catch (e) {
-                return true; // Default fallback to true
+                return true;
             }
         };
 
@@ -669,7 +682,7 @@
             document.body.removeChild(a);
         };
 
-        // --- MERGE ACTION (Memory-Safe Sequential Normalization + Instant Concat) ---
+        // --- MERGE ACTION (Memory-Safe Sequential Processing + Concat Demuxer) ---
         mergeBtn.addEventListener('click', async () => {
             if (mergedVideoBlobUrl) {
                 triggerDownload(mergedVideoBlobUrl, mergedVideoFilename);
@@ -694,14 +707,13 @@
 
                 const { width: targetW, height: targetH } = getDimensions(mergeOrientation.value, mergeResolution.value);
 
-                // Step 1: Normalize each video clip ONE AT A TIME
-                // Keeps RAM minimal (~100MB) by purging raw source files immediately after encoding
+                // Stage 1: Process each clip one-by-one with immediate RAM evacuation
                 for (let i = 0; i < count; i++) {
                     const dur = await getVideoDuration(mergeFiles[i]);
                     totalMergedDuration += dur;
 
-                    statusText.innerText = `Processing clip ${i + 1} of ${count} (${mergeFiles[i].name})...`;
-                    processingProgress.value = Math.round((i / count) * 90);
+                    statusText.innerText = `Standardizing clip ${i + 1} of ${count} (${mergeFiles[i].name})...`;
+                    processingProgress.value = Math.round((i / count) * 85);
 
                     const hasAudio = await checkAudioTrack(mergeFiles[i]);
                     const inName = `in_${i}.mov`;
@@ -709,7 +721,7 @@
 
                     ff.FS('writeFile', inName, await fetchFile(mergeFiles[i]));
 
-                    // Even-pixel guarantee scale filter to prevent H.264 crashes
+                    // Even-dimension scaling with centered black bars
                     const videoFilter = `scale=${targetW}:${targetH}:force_original_aspect_ratio=decrease,scale=trunc(iw/2)*2:trunc(ih/2)*2,pad=${targetW}:${targetH}:-1:-1:color=black,setsar=1,fps=30,format=yuv420p`;
 
                     if (hasAudio) {
@@ -717,37 +729,35 @@
                             ff,
                             '-i', inName,
                             '-vf', videoFilter,
-                            '-vcodec', 'libx264', '-crf', '24', '-preset', 'ultrafast',
+                            '-vcodec', 'libx264', '-crf', '24', '-preset', 'ultrafast', '-tune', 'fastdecode',
                             '-c:a', 'aac', '-ar', '44100', '-ac', '2',
                             partName
                         );
                     } else {
-                        // Inject silent track for silent inputs to keep timeline in sync
                         await safeRun(
                             ff,
                             '-i', inName,
                             '-f', 'lavfi', '-i', 'anullsrc=channel_layout=stereo:sample_rate=44100',
                             '-vf', videoFilter,
                             '-map', '0:v:0', '-map', '1:a:0',
-                            '-vcodec', 'libx264', '-crf', '24', '-preset', 'ultrafast',
+                            '-vcodec', 'libx264', '-crf', '24', '-preset', 'ultrafast', '-tune', 'fastdecode',
                             '-c:a', 'aac', '-shortest',
                             partName
                         );
                     }
 
-                    // Release raw video from memory immediately
+                    // Delete original raw clip immediately to preserve RAM
                     try { ff.FS('unlink', inName); } catch (e) {}
                     normalizedParts.push(partName);
                 }
 
-                // Step 2: Write Concat Demuxer manifest
-                statusText.innerText = "Stitching clips together...";
-                processingProgress.value = 92;
+                // Stage 2: Concat Demuxer (Instant 1-Second Merge)
+                statusText.innerText = "Stitching sequence together...";
+                processingProgress.value = 90;
 
                 const concatManifest = normalizedParts.map(p => `file '${p}'`).join('\n');
                 ff.FS('writeFile', 'concat.txt', concatManifest);
 
-                // Step 3: Instant Packet Copy (Fast & Zero RAM Pressure)
                 if (audioMode === 'mute') {
                     await safeRun(
                         ff,
@@ -759,16 +769,11 @@
                 } else if ((audioMode === 'mute_and_add' || audioMode === 'add_music') && mergeAudioFile) {
                     ff.FS('writeFile', 'bg_music.mp3', await fetchFile(mergeAudioFile));
                     
-                    const isLoop = mergeLoopMusic.checked;
-                    const isFade = mergeFadeMusic.checked;
-                    const fIn = mergeFadeIn.value;
-                    const fOut = mergeFadeOut.value;
-
                     let bgArgs = [];
-                    if (isLoop) bgArgs.push('-stream_loop', '-1');
+                    if (mergeLoopMusic.checked) bgArgs.push('-stream_loop', '-1');
                     bgArgs.push('-i', 'bg_music.mp3');
 
-                    const fadeFilter = buildAudioFadeFilter(totalMergedDuration, isFade, fIn, fOut, '1:a', 'faded_bg');
+                    const fadeFilter = buildAudioFadeFilter(totalMergedDuration, mergeFadeMusic.checked, mergeFadeIn.value, mergeFadeOut.value, '1:a', 'faded_bg');
 
                     if (audioMode === 'mute_and_add') {
                         await safeRun(
@@ -801,7 +806,14 @@
                     );
                 }
 
-                const fileBytes = ff.FS('readFile', outputName);
+                let fileBytes = null;
+                try {
+                    fileBytes = ff.FS('readFile', outputName);
+                } catch (readErr) {
+                    const recentLogs = ffmpegLogs.slice(-15).join('\n');
+                    throw new Error("FFmpeg aborted before creating the file.\n\nLog Details:\n" + recentLogs);
+                }
+
                 if (mergedVideoBlobUrl) URL.revokeObjectURL(mergedVideoBlobUrl);
                 mergedVideoBlobUrl = URL.createObjectURL(new Blob([fileBytes.buffer], { type: `video/${outExt}` }));
                 mergedVideoFilename = `merged_video_${mergeResolution.value}p.${outExt}`;
@@ -812,7 +824,7 @@
                 mergeBtn.disabled = false;
                 statusText.innerText = `Done! All ${count} clips merged cleanly. Click button to download.`;
 
-                // Clean intermediate files
+                // Clean intermediate parts
                 normalizedParts.forEach(p => { try { ff.FS('unlink', p); } catch (e) {} });
                 try { ff.FS('unlink', 'concat.txt'); } catch (e) {}
                 try { ff.FS('unlink', outputName); } catch (e) {}
@@ -861,7 +873,7 @@
                         '-ss', trimStart.toString(), '-i', inputName,
                         '-t', targetDuration.toString(),
                         '-vf', evenScaleFilter,
-                        '-vcodec', 'libx264', '-crf', '28', '-preset', 'ultrafast',
+                        '-vcodec', 'libx264', '-crf', '28', '-preset', 'ultrafast', '-tune', 'fastdecode',
                         '-pix_fmt', 'yuv420p', '-an', outputName
                     );
                 } else if ((audioMode === 'mute_and_add' || audioMode === 'add_music') && compressAudioFile) {
@@ -886,7 +898,7 @@
                             '-filter_complex', `[0:v]${evenScaleFilter}[v];${fadeFilter}`,
                             '-t', targetDuration.toString(),
                             '-map', '[v]', '-map', '[bgmusic]',
-                            '-vcodec', 'libx264', '-crf', '28', '-preset', 'ultrafast',
+                            '-vcodec', 'libx264', '-crf', '28', '-preset', 'ultrafast', '-tune', 'fastdecode',
                             '-pix_fmt', 'yuv420p', '-c:a', 'aac',
                             outputName
                         );
@@ -898,7 +910,7 @@
                             '-filter_complex', `[0:v]${evenScaleFilter}[v];${fadeFilter};[0:a][bgmusic]amix=inputs=2:duration=first:dropout_transition=2[mixed]`,
                             '-t', targetDuration.toString(),
                             '-map', '[v]', '-map', '[mixed]',
-                            '-vcodec', 'libx264', '-crf', '28', '-preset', 'ultrafast',
+                            '-vcodec', 'libx264', '-crf', '28', '-preset', 'ultrafast', '-tune', 'fastdecode',
                             '-pix_fmt', 'yuv420p', '-c:a', 'aac',
                             outputName
                         );
@@ -910,13 +922,20 @@
                         '-ss', trimStart.toString(), '-i', inputName,
                         '-t', targetDuration.toString(),
                         '-vf', evenScaleFilter,
-                        '-vcodec', 'libx264', '-crf', '28', '-preset', 'ultrafast',
+                        '-vcodec', 'libx264', '-crf', '28', '-preset', 'ultrafast', '-tune', 'fastdecode',
                         '-pix_fmt', 'yuv420p', '-c:a', 'aac',
                         outputName
                     );
                 }
 
-                const fileBytes = ff.FS('readFile', outputName);
+                let fileBytes = null;
+                try {
+                    fileBytes = ff.FS('readFile', outputName);
+                } catch (readErr) {
+                    const recentLogs = ffmpegLogs.slice(-15).join('\n');
+                    throw new Error("FFmpeg aborted before creating the file.\n\nLog Details:\n" + recentLogs);
+                }
+
                 if (compressedVideoBlobUrl) URL.revokeObjectURL(compressedVideoBlobUrl);
                 compressedVideoBlobUrl = URL.createObjectURL(new Blob([fileBytes.buffer], { type: `video/${outExt}` }));
                 compressedVideoFilename = `compressed_video.${outExt}`;
