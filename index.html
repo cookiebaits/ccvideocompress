@@ -169,7 +169,7 @@
         <h2>CookieClip Combine & Compress</h2>
         <p class="subtitle">Merge, compress, customize audio, and trim clips locally without browser freezes.</p>
 
-        <!-- Progress Indicator with High Visibility -->
+        <!-- High-Visibility Progress Bar -->
         <div id="progress-container">
             <p id="status-text">Processing...</p>
             <progress id="processing-progress" value="0" max="100"></progress>
@@ -180,7 +180,7 @@
         </div>
     </div>
 
-    <!-- Side-by-Side Tools Grid -->
+    <!-- 2-Column Side-by-Side Tools -->
     <div class="tools-grid">
 
         <!-- 1. MERGE CLIPS -->
@@ -293,6 +293,17 @@
                 </label>
             </div>
 
+            <!-- Compressor Target Resolution Selector -->
+            <div class="control-row">
+                <label for="compress-resolution">Target Compression:</label>
+                <select id="compress-resolution">
+                    <option value="auto" selected>Auto Match Original Dimensions</option>
+                    <option value="720">720p HD (Balanced Size)</option>
+                    <option value="1080">1080p Full HD</option>
+                    <option value="480">480p SD (Smallest File)</option>
+                </select>
+            </div>
+
             <div class="control-row">
                 <label for="compress-audio-mode">Audio Mode:</label>
                 <select id="compress-audio-mode">
@@ -387,6 +398,7 @@
         const compressFilename = document.getElementById('compress-filename');
         const compressBtn = document.getElementById('compress-btn');
         const compressFormat = document.getElementById('compress-format');
+        const compressResolution = document.getElementById('compress-resolution');
         const trimStartInput = document.getElementById('trim-start');
         const trimEndInput = document.getElementById('trim-end');
         const compressAudioMode = document.getElementById('compress-audio-mode');
@@ -474,6 +486,7 @@
             });
         };
 
+        // Auto-configure optimal resolution & orientation based on uploaded clips
         const autoConfigureFromClips = async (files) => {
             if (!files || files.length === 0) return;
             const meta = await probeVideoMetadata(files[0]);
@@ -613,6 +626,7 @@
             compressAudioWrapper.style.display = needsAudio ? 'block' : 'none';
             resetCompressButton();
         });
+        compressResolution.addEventListener('change', resetCompressButton);
         compressFormat.addEventListener('change', resetCompressButton);
         compressLoopMusic.addEventListener('change', resetCompressButton);
         trimStartInput.addEventListener('input', resetCompressButton);
@@ -874,7 +888,6 @@
 
             if (mergeFiles.length < 2) return;
             
-            // Show progress bar and smoothly scroll to the top
             progressContainer.style.display = 'block';
             window.scrollTo({ top: 0, behavior: 'smooth' });
             processingProgress.value = 0;
@@ -893,6 +906,8 @@
 
                 const AudioCtx = window.AudioContext || window.webkitAudioContext;
                 const audioCtx = new AudioCtx();
+                if (audioCtx.state === 'suspended') await audioCtx.resume();
+
                 const destNode = audioCtx.createMediaStreamDestination();
 
                 let bgAudioBuffer = null;
@@ -1026,7 +1041,6 @@
 
                 let calculatedTotalSec = 0;
 
-                // Play & Draw Clips Sequentially with Centered Black Bars
                 for (let i = 0; i < mergeFiles.length; i++) {
                     const file = mergeFiles[i];
                     statusText.innerText = `Rendering clip ${i + 1} of ${mergeFiles.length} (${file.name})...`;
@@ -1066,28 +1080,35 @@
                                 drawX = Math.round((targetW - drawW) / 2);
                             }
 
-                            let animId = null;
-                            const renderFrame = () => {
-                                if (!v.paused && !v.ended) {
-                                    ctx.fillStyle = "#000000";
-                                    ctx.fillRect(0, 0, targetW, targetH);
-                                    ctx.drawImage(v, drawX, drawY, drawW, drawH);
-                                    animId = requestAnimationFrame(renderFrame);
-                                }
-                            };
-
-                            v.onplay = () => renderFrame();
-
-                            v.onended = () => {
+                            let isFinished = false;
+                            const completeClip = () => {
+                                if (isFinished) return;
+                                isFinished = true;
                                 if (animId) cancelAnimationFrame(animId);
                                 if (vSource) try { vSource.disconnect(); } catch (e) {}
                                 URL.revokeObjectURL(v.src);
                                 resolveClip();
                             };
 
+                            let animId = null;
+                            const renderFrame = () => {
+                                if (isFinished) return;
+                                if (!v.paused && !v.ended) {
+                                    ctx.fillStyle = "#000000";
+                                    ctx.fillRect(0, 0, targetW, targetH);
+                                    ctx.drawImage(v, drawX, drawY, drawW, drawH);
+                                    animId = requestAnimationFrame(renderFrame);
+                                } else if (v.ended) {
+                                    completeClip();
+                                }
+                            };
+
+                            v.onplay = () => renderFrame();
+                            v.onended = completeClip;
+
                             v.play().catch(() => {
                                 v.muted = true;
-                                v.play();
+                                v.play().then(renderFrame);
                             });
                         };
                     });
@@ -1126,7 +1147,7 @@
             }
         });
 
-        // --- Core Compressor & Trimmer Engine ---
+        // --- Hardware-Accelerated Compressor & Trimmer Engine ---
         compressBtn.addEventListener('click', async () => {
             if (compressedBlobUrl) {
                 triggerDownload(compressedBlobUrl, compressedFilename);
@@ -1135,7 +1156,6 @@
 
             if (!singleCompressFile) return;
             
-            // Show progress bar and smoothly scroll to the top
             progressContainer.style.display = 'block';
             window.scrollTo({ top: 0, behavior: 'smooth' });
             processingProgress.value = 0;
@@ -1144,6 +1164,7 @@
 
             const format = compressFormat.value;
             const audioMode = compressAudioMode.value;
+            const targetResChoice = compressResolution.value;
 
             try {
                 const meta = await probeVideoMetadata(singleCompressFile);
@@ -1153,18 +1174,55 @@
 
                 const AudioCtx = window.AudioContext || window.webkitAudioContext;
                 const audioCtx = new AudioCtx();
+                if (audioCtx.state === 'suspended') await audioCtx.resume();
+
                 const destNode = audioCtx.createMediaStreamDestination();
 
+                let bgAudioBuffer = null;
+                if ((audioMode === 'add_music' || audioMode === 'mute_and_add') && compressAudioFile) {
+                    statusText.innerText = "Loading background music...";
+                    const bgArrayBuf = await compressAudioFile.arrayBuffer();
+                    bgAudioBuffer = await audioCtx.decodeAudioData(bgArrayBuf);
+                }
+
+                // MP3 Extraction
                 if (format === 'mp3') {
                     statusText.innerText = "Extracting audio to MP3...";
                     const arrayBuf = await singleCompressFile.arrayBuffer();
                     const decodedBuf = await audioCtx.decodeAudioData(arrayBuf);
 
                     const offlineCtx = new OfflineAudioContext(2, Math.max(1, Math.ceil(targetDur * 44100)), 44100);
-                    const src = offlineCtx.createBufferSource();
-                    src.buffer = decodedBuf;
-                    src.connect(offlineCtx.destination);
-                    src.start(0, trimStart, targetDur);
+                    let offset = 0;
+
+                    if (audioMode !== 'mute_and_add') {
+                        const src = offlineCtx.createBufferSource();
+                        src.buffer = decodedBuf;
+                        src.connect(offlineCtx.destination);
+                        src.start(0, trimStart, targetDur);
+                        offset = targetDur;
+                    } else {
+                        offset = targetDur || (bgAudioBuffer ? bgAudioBuffer.duration : 10);
+                    }
+
+                    if (bgAudioBuffer) {
+                        const bgSrc = offlineCtx.createBufferSource();
+                        bgSrc.buffer = bgAudioBuffer;
+                        bgSrc.loop = compressLoopMusic.checked;
+                        const gain = offlineCtx.createGain();
+
+                        if (compressFadeMusic.checked) {
+                            const fIn = parseFloat(compressFadeIn.value) || 2;
+                            const fOut = parseFloat(compressFadeOut.value) || 3;
+                            gain.gain.setValueAtTime(0, 0);
+                            gain.gain.linearRampToValueAtTime(1, Math.min(fIn, offset / 2));
+                            gain.gain.setValueAtTime(1, Math.max(0, offset - fOut));
+                            gain.gain.linearRampToValueAtTime(0, offset);
+                        }
+
+                        bgSrc.connect(gain);
+                        gain.connect(offlineCtx.destination);
+                        bgSrc.start(0);
+                    }
 
                     const rendered = await offlineCtx.startRendering();
                     const mp3Blob = encodeAudioBufferToMp3(rendered);
@@ -1180,8 +1238,33 @@
                     return;
                 }
 
-                renderCanvas.width = meta.width;
-                renderCanvas.height = meta.height;
+                // Calculate Target Scaling Dimensions
+                let targetW = meta.width;
+                let targetH = meta.height;
+                let targetBitrate = 4500000;
+
+                if (targetResChoice !== 'auto') {
+                    const maxH = parseInt(targetResChoice, 10);
+                    const isPortrait = meta.height > meta.width;
+                    if (isPortrait) {
+                        const scaledH = Math.min(meta.height, Math.round((maxH * 16) / 9));
+                        targetW = Math.round((scaledH * meta.width) / meta.height);
+                        targetH = scaledH;
+                    } else {
+                        const scaledH = Math.min(meta.height, maxH);
+                        targetW = Math.round((scaledH * meta.width) / meta.height);
+                        targetH = scaledH;
+                    }
+                    targetW = Math.round(targetW / 2) * 2;
+                    targetH = Math.round(targetH / 2) * 2;
+
+                    if (maxH <= 480) targetBitrate = 1200000;
+                    else if (maxH <= 720) targetBitrate = 2800000;
+                    else if (maxH <= 1080) targetBitrate = 5000000;
+                }
+
+                renderCanvas.width = targetW;
+                renderCanvas.height = targetH;
                 const stream = renderCanvas.captureStream(30);
 
                 if (audioMode !== 'mute') {
@@ -1191,11 +1274,12 @@
 
                 let mimeType = 'video/mp4';
                 if (!MediaRecorder.isTypeSupported(mimeType)) mimeType = 'video/mp4;codecs=avc1';
+                if (!MediaRecorder.isTypeSupported(mimeType)) mimeType = 'video/mp4;codecs=avc1,mp4a.40.2';
                 if (!MediaRecorder.isTypeSupported(mimeType)) mimeType = 'video/webm;codecs=h264';
 
                 const recorder = new MediaRecorder(stream, {
                     mimeType: mimeType,
-                    videoBitsPerSecond: 3500000
+                    videoBitsPerSecond: targetBitrate
                 });
 
                 const recordedChunks = [];
@@ -1206,6 +1290,24 @@
                 const finished = new Promise((resolve) => recorder.onstop = resolve);
                 recorder.start(100);
 
+                let bgSource = null;
+                let bgGain = null;
+                if (bgAudioBuffer) {
+                    bgSource = audioCtx.createBufferSource();
+                    bgSource.buffer = bgAudioBuffer;
+                    bgSource.loop = compressLoopMusic.checked;
+                    bgGain = audioCtx.createGain();
+
+                    if (compressFadeMusic.checked) {
+                        bgGain.gain.setValueAtTime(0, audioCtx.currentTime);
+                        bgGain.gain.linearRampToValueAtTime(1, audioCtx.currentTime + (parseFloat(compressFadeIn.value) || 2));
+                    }
+                    bgSource.connect(bgGain);
+                    bgGain.connect(destNode);
+                    bgSource.start();
+                }
+
+                // Robust Frame Renderer with Active Timer Failsafe
                 await new Promise((resolveVideo) => {
                     const v = document.createElement('video');
                     v.muted = false;
@@ -1220,36 +1322,88 @@
                         } catch (e) {}
                     }
 
-                    v.onloadedmetadata = () => {
-                        v.currentTime = trimStart;
+                    let isDone = false;
+                    let animTimer = null;
+                    let animId = null;
+
+                    const finish = () => {
+                        if (isDone) return;
+                        isDone = true;
+                        if (animTimer) clearInterval(animTimer);
+                        if (animId) cancelAnimationFrame(animId);
+                        v.pause();
+                        if (vSource) try { vSource.disconnect(); } catch (e) {}
+                        URL.revokeObjectURL(v.src);
+                        resolveVideo();
                     };
 
-                    v.onseeked = () => {
-                        let animId = null;
-                        const render = () => {
-                            if (!v.paused && !v.ended) {
-                                ctx.drawImage(v, 0, 0, meta.width, meta.height);
-                                const progress = ((v.currentTime - trimStart) / targetDur) * 95;
-                                processingProgress.value = Math.max(0, Math.min(95, Math.round(progress)));
+                    v.onended = finish;
+                    v.onerror = finish;
 
-                                if (v.currentTime >= trimStart + targetDur) {
-                                    v.pause();
-                                    if (animId) cancelAnimationFrame(animId);
-                                    if (vSource) try { vSource.disconnect(); } catch (e) {}
-                                    URL.revokeObjectURL(v.src);
-                                    resolveVideo();
-                                    return;
-                                }
-                                animId = requestAnimationFrame(render);
-                            }
-                        };
-                        v.play();
-                        render();
+                    const checkTime = () => {
+                        if (v.currentTime >= trimStart + targetDur || v.ended) {
+                            finish();
+                            return true;
+                        }
+                        return false;
+                    };
+
+                    const render = () => {
+                        if (isDone) return;
+                        if (checkTime()) return;
+
+                        ctx.drawImage(v, 0, 0, targetW, targetH);
+                        const progress = Math.min(95, Math.max(0, Math.round(((v.currentTime - trimStart) / targetDur) * 95)));
+                        processingProgress.value = progress;
+                        statusText.innerText = `Compressing & trimming (${progress}%)...`;
+
+                        animId = requestAnimationFrame(render);
+                    };
+
+                    // Active background interval prevents tab-switch freezes
+                    animTimer = setInterval(() => {
+                        if (isDone) return;
+                        if (checkTime()) return;
+                        if (v.paused && !v.ended) {
+                            v.play().catch(() => {});
+                        }
+                    }, 200);
+
+                    const startPlayback = () => {
+                        v.play().then(() => {
+                            render();
+                        }).catch(() => {
+                            v.muted = true;
+                            v.play().then(render);
+                        });
+                    };
+
+                    v.onloadedmetadata = () => {
+                        if (trimStart > 0.05) {
+                            v.currentTime = trimStart;
+                            v.onseeked = () => {
+                                v.onseeked = null;
+                                startPlayback();
+                            };
+                            setTimeout(() => {
+                                if (!isDone && v.paused) startPlayback();
+                            }, 400);
+                        } else {
+                            startPlayback();
+                        }
                     };
                 });
 
+                if (bgGain && compressFadeMusic.checked) {
+                    const fOut = parseFloat(compressFadeOut.value) || 3;
+                    bgGain.gain.setValueAtTime(1, audioCtx.currentTime);
+                    bgGain.gain.linearRampToValueAtTime(0, audioCtx.currentTime + fOut);
+                }
+
                 recorder.stop();
                 await finished;
+
+                if (bgSource) try { bgSource.stop(); } catch (e) {}
                 audioCtx.close();
 
                 statusText.innerText = "Indexing MP4 file for seekable timeline...";
