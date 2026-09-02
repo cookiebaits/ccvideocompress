@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>CookieClip Combine & Compress</title>
-    <script src="coi-serviceworker.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@ffmpeg/ffmpeg@0.11.6/dist/ffmpeg.min.js"></script>
     <style>
         body {
             font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
@@ -39,7 +39,7 @@
             font-weight: 500;
         }
 
-        /* Inline Loading Card */
+        /* Inline Fast Loading Card */
         #init-container {
             background: #f8fafc;
             border: 1px solid #e2e8f0;
@@ -154,11 +154,11 @@
         
         <div id="init-container">
             <h3><div class="spinner"></div> Loading Components</h3>
-            <p id="init-status">Downloading engine to browser cache (one-time only)...</p>
+            <p id="init-status">Initializing engine in browser...</p>
             <progress id="init-progress"></progress>
         </div>
 
-        <p id="message">✅ FFmpeg Engine Ready (Offline Cache Active).</p>
+        <p id="message">✅ FFmpeg Engine Ready.</p>
 
         <div class="ephemeral-alert">
             ⚠️ <strong>Heads Up:</strong> Download your finished videos immediately! No history or files are retained. Everything permanently self-deletes once you close or refresh this tab.
@@ -315,13 +315,17 @@
         <button id="compress-btn" class="action-btn" disabled>Compress & Trim</button>
     </div>
 
-    <script type="module">
-        import { FFmpeg } from 'https://cdn.jsdelivr.net/npm/@ffmpeg/ffmpeg@0.12.10/dist/esm/index.js';
-        import { toBlobURL } from 'https://cdn.jsdelivr.net/npm/@ffmpeg/util@0.12.1/dist/esm/index.js';
-        
-        const ffmpeg = new FFmpeg();
+    <script>
+        const { createFFmpeg, fetchFile } = FFmpeg;
+
+        // Core ST (Single-Threaded) configured with mainName: 'main' to prevent proxy_main errors
+        const ffmpeg = createFFmpeg({
+            log: false,
+            corePath: 'https://cdn.jsdelivr.net/npm/@ffmpeg/core-st@0.11.1/dist/ffmpeg-core.js',
+            mainName: 'main'
+        });
+
         let isLoaded = false;
-        
         let mergeFiles = [];
         let mergeAudioFile = null;
         let singleCompressFile = null;
@@ -423,55 +427,30 @@
             }
         };
 
-        const getCanvasDimensions = (orientation, resChoice) => {
-            const height = parseInt(resChoice, 10);
-            let width = Math.round((height * 16) / 9);
-            if (width % 2 !== 0) width += 1;
-
-            if (orientation === 'horizontal') {
-                return { width, height };
-            } else {
-                return { width: height, height: width };
-            }
-        };
-
-        // Persistent CacheStorage Pipeline
-        const getCachedBlobURL = async (url, mimeType) => {
-            try {
-                const cache = await caches.open('cookieclip-v1');
-                let response = await cache.match(url);
-                if (!response) {
-                    response = await fetch(url);
-                    if (!response.ok) throw new Error(`HTTP ${response.status}`);
-                    await cache.put(url, response.clone());
-                }
-                const blob = await response.blob();
-                return URL.createObjectURL(new Blob([blob], { type: mimeType }));
-            } catch (e) {
-                return await toBlobURL(url, mimeType);
-            }
+        const getDimensions = (orientation, resolution) => {
+            const res = parseInt(resolution, 10);
+            const pairs = {
+                480: [854, 480],
+                720: [1280, 720],
+                1080: [1920, 1080],
+                1440: [2560, 1440],
+                2160: [3840, 2160]
+            };
+            const [w, h] = pairs[res] || [1920, 1080];
+            return orientation === 'horizontal' ? { width: w, height: h } : { width: h, height: w };
         };
 
         const loadFFmpeg = async () => {
             try {
-                ffmpeg.on('progress', ({ progress }) => {
-                    processingProgress.value = Math.max(0, Math.min(100, Math.round(progress * 100)));
+                ffmpeg.setProgress(({ ratio }) => {
+                    processingProgress.value = Math.max(0, Math.min(100, Math.round(ratio * 100)));
                 });
 
-                const baseURL = 'https://cdn.jsdelivr.net/npm/@ffmpeg/core@0.12.6/dist/esm';
-                
-                const [coreURL, wasmURL] = await Promise.all([
-                    getCachedBlobURL(`${baseURL}/ffmpeg-core.js`, 'text/javascript'),
-                    getCachedBlobURL(`${baseURL}/ffmpeg-core.wasm`, 'application/wasm')
-                ]);
-
-                initStatus.innerText = "Engine ready. Launching sandbox...";
-
-                await ffmpeg.load({ coreURL, wasmURL });
+                await ffmpeg.load();
 
                 isLoaded = true;
                 
-                // Hide loader and activate all UI controls
+                // Hide loader and enable all controls
                 initContainer.style.display = 'none';
                 message.style.display = 'block';
                 
@@ -487,7 +466,7 @@
 
             } catch (err) {
                 console.error("Engine Load Error:", err);
-                initContainer.innerHTML = `<h3 style="color: #dc2626;">⚠️ Engine Load Delayed</h3><p style="font-size: 13px; color: #4b5563;">Please do a one-time hard refresh (<strong>Ctrl+Shift+R</strong> or <strong>Cmd+Shift+R</strong>) to activate security headers.</p>`;
+                initContainer.innerHTML = `<h3 style="color: #dc2626;">⚠️ Engine Load Error</h3><p style="font-size: 13px; color: #4b5563;">${err.message}. Please refresh the page.</p>`;
             }
         };
 
@@ -621,8 +600,6 @@
             });
         };
 
-        const fetchLocalFile = async (file) => new Uint8Array(await file.arrayBuffer());
-
         const buildAudioFadeFilter = (totalDuration, shouldFade, fadeInSec, fadeOutSec, inputLabel = 'bg_raw', outputLabel = 'bgmusic') => {
             if (!shouldFade || totalDuration <= 0.5) return `[${inputLabel}]anull[${outputLabel}]`;
             const fIn = Math.min(parseFloat(fadeInSec) || 2.0, totalDuration / 2);
@@ -662,32 +639,34 @@
                 const count = mergeFiles.length;
                 let totalMergedDuration = 0;
 
-                const { width: targetW, height: targetH } = getCanvasDimensions(mergeOrientation.value, mergeResolution.value);
+                const { width: targetW, height: targetH } = getDimensions(mergeOrientation.value, mergeResolution.value);
 
                 let inputArgs = [];
                 let filterSteps = [];
-                let concatInputs = "";
+                let concatVideoInputs = "";
+                let concatAudioInputs = "";
 
                 for (let i = 0; i < count; i++) {
                     const dur = await getVideoDuration(mergeFiles[i]);
                     totalMergedDuration += dur;
 
                     const filename = `clip_${i}.mov`;
-                    await ffmpeg.writeFile(filename, await fetchLocalFile(mergeFiles[i]));
+                    ffmpeg.FS('writeFile', filename, await fetchFile(mergeFiles[i]));
                     inputArgs.push('-i', filename);
 
                     filterSteps.push(`[${i}:v]scale=${targetW}:${targetH}:force_original_aspect_ratio=decrease,pad=${targetW}:${targetH}:(ow-iw)/2:(oh-ih)/2:black,setsar=1,fps=30[v${i}]`);
                     filterSteps.push(`[${i}:a]aformat=sample_rates=44100:channel_layouts=stereo[a${i}]`);
-                    concatInputs += `[v${i}][a${i}]`;
+                    concatVideoInputs += `[v${i}]`;
+                    concatAudioInputs += `[v${i}][a${i}]`;
                 }
 
-                filterSteps.push(`${concatInputs}concat=n=${count}:v=1:a=1[vjoined][ajoined]`);
-                let finalMapArgs = ['-map', '[vjoined]'];
+                let finalMapArgs = [];
 
                 if (audioMode === 'mute') {
-                    finalMapArgs.push('-an');
+                    filterSteps.push(`${concatVideoInputs}concat=n=${count}:v=1:a=0[vjoined]`);
+                    finalMapArgs = ['-map', '[vjoined]', '-an'];
                 } else if ((audioMode === 'mute_and_add' || audioMode === 'add_music') && mergeAudioFile) {
-                    await ffmpeg.writeFile('merge_bg.mp3', await fetchLocalFile(mergeAudioFile));
+                    ffmpeg.FS('writeFile', 'merge_bg.mp3', await fetchFile(mergeAudioFile));
                     
                     const isLoop = mergeLoopMusic.checked;
                     const isFade = mergeFadeMusic.checked;
@@ -702,27 +681,30 @@
                     filterSteps.push(fadeFilter);
 
                     if (audioMode === 'mute_and_add') {
-                        finalMapArgs.push('-map', '[bgmusic]');
+                        filterSteps.push(`${concatVideoInputs}concat=n=${count}:v=1:a=0[vjoined]`);
+                        finalMapArgs = ['-map', '[vjoined]', '-map', '[bgmusic]'];
                     } else {
+                        filterSteps.push(`${concatAudioInputs}concat=n=${count}:v=1:a=1[vjoined][ajoined]`);
                         filterSteps.push(`[ajoined][bgmusic]amix=inputs=2:duration=first:dropout_transition=2[a_mixed]`);
-                        finalMapArgs.push('-map', '[a_mixed]');
+                        finalMapArgs = ['-map', '[vjoined]', '-map', '[a_mixed]'];
                     }
                 } else {
-                    finalMapArgs.push('-map', '[ajoined]');
+                    filterSteps.push(`${concatAudioInputs}concat=n=${count}:v=1:a=1[vjoined][ajoined]`);
+                    finalMapArgs = ['-map', '[vjoined]', '-map', '[ajoined]'];
                 }
 
                 const fullFilterComplex = filterSteps.join(';');
 
-                await ffmpeg.exec([
+                await ffmpeg.run(
                     ...inputArgs,
                     '-filter_complex', fullFilterComplex,
                     ...finalMapArgs,
                     '-vcodec', 'libx264', '-crf', '24', '-preset', 'ultrafast',
                     '-pix_fmt', 'yuv420p', '-c:a', 'aac', '-t', totalMergedDuration.toString(),
                     outputName
-                ]);
+                );
 
-                const data = await ffmpeg.readFile(outputName);
+                const data = ffmpeg.FS('readFile', outputName);
                 if (mergedVideoBlobUrl) URL.revokeObjectURL(mergedVideoBlobUrl);
                 mergedVideoBlobUrl = URL.createObjectURL(new Blob([data.buffer], { type: `video/${outExt}` }));
                 mergedVideoFilename = `merged_video_${mergeResolution.value}p.${outExt}`;
@@ -733,10 +715,10 @@
                 statusText.innerText = "Done! All clips merged cleanly. Click button to download.";
 
                 for (let i = 0; i < count; i++) {
-                    try { await ffmpeg.deleteFile(`clip_${i}.mov`); } catch(e) {}
+                    try { ffmpeg.FS('unlink', `clip_${i}.mov`); } catch(e) {}
                 }
-                try { await ffmpeg.deleteFile('merge_bg.mp3'); } catch(e) {}
-                try { await ffmpeg.deleteFile(outputName); } catch(e) {}
+                try { ffmpeg.FS('unlink', 'merge_bg.mp3'); } catch(e) {}
+                try { ffmpeg.FS('unlink', outputName); } catch(e) {}
 
             } catch (err) {
                 console.error(err);
@@ -766,7 +748,7 @@
                 const inputName = 'input_compress.mov';
                 const audioMode = compressAudioMode.value;
                 
-                await ffmpeg.writeFile(inputName, await fetchLocalFile(singleCompressFile));
+                ffmpeg.FS('writeFile', inputName, await fetchFile(singleCompressFile));
                 const duration = await getVideoDuration(singleCompressFile);
 
                 const trimStart = parseFloat(trimStartInput.value) || 0;
@@ -774,14 +756,14 @@
                 const targetDuration = Math.max(0.1, duration - trimStart - trimEnd);
 
                 if (audioMode === 'mute') {
-                    await ffmpeg.exec([
+                    await ffmpeg.run(
                         '-ss', trimStart.toString(), '-i', inputName,
                         '-t', targetDuration.toString(),
                         '-vcodec', 'libx264', '-crf', '28', '-preset', 'ultrafast',
                         '-pix_fmt', 'yuv420p', '-an', outputName
-                    ]);
+                    );
                 } else if ((audioMode === 'mute_and_add' || audioMode === 'add_music') && compressAudioFile) {
-                    await ffmpeg.writeFile('compress_bg.mp3', await fetchLocalFile(compressAudioFile));
+                    ffmpeg.FS('writeFile', 'compress_bg.mp3', await fetchFile(compressAudioFile));
 
                     const isLoop = compressLoopMusic.checked;
                     const isFade = compressFadeMusic.checked;
@@ -795,7 +777,7 @@
                     const fadeFilter = buildAudioFadeFilter(targetDuration, isFade, fIn, fOut, '1:a', 'bgmusic');
 
                     if (audioMode === 'mute_and_add') {
-                        await ffmpeg.exec([
+                        await ffmpeg.run(
                             '-ss', trimStart.toString(), '-i', inputName,
                             ...bgAudioInputArgs,
                             '-filter_complex', `${fadeFilter}`,
@@ -804,9 +786,9 @@
                             '-vcodec', 'libx264', '-crf', '28', '-preset', 'ultrafast',
                             '-pix_fmt', 'yuv420p', '-c:a', 'aac',
                             outputName
-                        ]);
+                        );
                     } else {
-                        await ffmpeg.exec([
+                        await ffmpeg.run(
                             '-ss', trimStart.toString(), '-i', inputName,
                             ...bgAudioInputArgs,
                             '-filter_complex', `${fadeFilter};[0:a][bgmusic]amix=inputs=2:duration=first:dropout_transition=2[mixed]`,
@@ -815,20 +797,20 @@
                             '-vcodec', 'libx264', '-crf', '28', '-preset', 'ultrafast',
                             '-pix_fmt', 'yuv420p', '-c:a', 'aac',
                             outputName
-                        ]);
+                        );
                     }
-                    try { await ffmpeg.deleteFile('compress_bg.mp3'); } catch(e) {}
+                    try { ffmpeg.FS('unlink', 'compress_bg.mp3'); } catch(e) {}
                 } else {
-                    await ffmpeg.exec([
+                    await ffmpeg.run(
                         '-ss', trimStart.toString(), '-i', inputName,
                         '-t', targetDuration.toString(),
                         '-vcodec', 'libx264', '-crf', '28', '-preset', 'ultrafast',
                         '-pix_fmt', 'yuv420p', '-c:a', 'aac',
                         outputName
-                    ]);
+                    );
                 }
 
-                const data = await ffmpeg.readFile(outputName);
+                const data = ffmpeg.FS('readFile', outputName);
                 if (compressedVideoBlobUrl) URL.revokeObjectURL(compressedVideoBlobUrl);
                 compressedVideoBlobUrl = URL.createObjectURL(new Blob([data.buffer], { type: `video/${outExt}` }));
                 compressedVideoFilename = `compressed_video.${outExt}`;
@@ -839,8 +821,8 @@
                 statusText.innerText = "Done! Click button to download.";
 
                 try {
-                    await ffmpeg.deleteFile(inputName);
-                    await ffmpeg.deleteFile(outputName);
+                    ffmpeg.FS('unlink', inputName);
+                    ffmpeg.FS('unlink', outputName);
                 } catch(e) {}
 
             } catch (err) {
