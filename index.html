@@ -4,6 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>CookieClip Combine & Compress</title>
+    <!-- Lightweight Pure JS MP3 Encoder (Only 30KB) -->
     <script src="https://cdn.jsdelivr.net/npm/lamejs@1.2.1/lame.min.js"></script>
     <style>
         body {
@@ -118,7 +119,7 @@
     <canvas id="render-canvas"></canvas>
 
     <div class="card header-card">
-        <span class="security-badge">🔒 Hardware Accelerated & RAM Ephemeral. No Server Uploads.</span>
+        <span class="security-badge">🔒 Hardware Accelerated & Offline in RAM. Zero Server Uploads.</span>
         <h2>CookieClip Combine & Compress</h2>
         <p class="subtitle">Merge, compress, customize audio, and trim clips locally without browser freezes.</p>
 
@@ -132,6 +133,7 @@
         </div>
     </div>
 
+    <!-- 1. MERGE CLIPS -->
     <div class="card">
         <h3>1. Clip Merger</h3>
         <p class="subtitle">Combine up to 10 clips with automatic orientation centering and scaling.</p>
@@ -144,6 +146,7 @@
 
         <ul class="clip-list" id="merge-list"></ul>
 
+        <!-- Orientation Selector -->
         <div class="control-row">
             <label for="merge-orientation">
                 Output Orientation:
@@ -155,6 +158,7 @@
             </select>
         </div>
 
+        <!-- Target Resolution Selector (Auto-Configured) -->
         <div class="control-row">
             <label for="merge-resolution">
                 Target Resolution:
@@ -169,6 +173,7 @@
             </select>
         </div>
 
+        <!-- Audio Mode Selector -->
         <div class="control-row">
             <label for="merge-audio-mode">Audio Mode:</label>
             <select id="merge-audio-mode">
@@ -205,6 +210,7 @@
             </div>
         </div>
 
+        <!-- Output Format Restricted to MP4 & MP3 -->
         <div class="control-row">
             <label for="merge-format">Output Format:</label>
             <select id="merge-format">
@@ -216,6 +222,7 @@
         <button id="merge-btn" class="action-btn" disabled>Merge Clips</button>
     </div>
 
+    <!-- 2. COMPRESS & TRIM -->
     <div class="card">
         <h3>2. Video Compressor & Trim</h3>
         <p class="subtitle">Compress a single file, adjust audio, and trim timing.</p>
@@ -272,6 +279,7 @@
             </div>
         </div>
 
+        <!-- Output Format Restricted to MP4 & MP3 -->
         <div class="control-row">
             <label for="compress-format">Output Format:</label>
             <select id="compress-format">
@@ -294,6 +302,7 @@
         let compressedBlobUrl = null;
         let compressedFilename = "";
 
+        // UI Selectors
         const progressContainer = document.getElementById('progress-container');
         const processingProgress = document.getElementById('processing-progress');
         const statusText = document.getElementById('status-text');
@@ -413,7 +422,7 @@
             });
         };
 
-        // Auto-configure best resolution & orientation from first uploaded clip
+        // Auto-configure optimal resolution & orientation based on uploaded clips
         const autoConfigureFromClips = async (files) => {
             if (!files || files.length === 0) return;
             const meta = await probeVideoMetadata(files[0]);
@@ -576,7 +585,7 @@
             document.body.removeChild(a);
         };
 
-        // Fast Offline In-Browser MP3 Encoder
+        // --- Fast Offline In-Browser MP3 Encoder ---
         const encodeAudioBufferToMp3 = (audioBuffer) => {
             const channels = audioBuffer.numberOfChannels;
             const sampleRate = audioBuffer.sampleRate;
@@ -607,7 +616,210 @@
             return new Blob(mp3Data, { type: 'audio/mp3' });
         };
 
-        // Hardware-Accelerated Merger Engine
+        // --- Core MP4 Duration & Random Access Indexer (Fixes Grayed-out Seekbar) ---
+        // Injects duration into mvhd/tkhd/mdhd and appends an ISO 'mfra' index table
+        async function makeMp4Seekable(blob, durationSec) {
+            const arrayBuffer = await blob.arrayBuffer();
+            const data = new Uint8Array(arrayBuffer);
+            const view = new DataView(data.buffer, data.byteOffset, data.byteLength);
+
+            let pos = 0;
+            let moovPos = -1;
+            let moovSize = 0;
+            let movieTimescale = 1000;
+
+            // 1. Locate moov atom
+            while (pos <= data.length - 8) {
+                let bSize = view.getUint32(pos);
+                const bType = String.fromCharCode(data[pos+4], data[pos+5], data[pos+6], data[pos+7]);
+                if (bSize === 1 && pos + 16 <= data.length) {
+                    bSize = Number(view.getBigUint64(pos + 8));
+                } else if (bSize === 0) {
+                    bSize = data.length - pos;
+                }
+                if (bSize < 8 || pos + bSize > data.length) break;
+
+                if (bType === 'moov') {
+                    moovPos = pos;
+                    moovSize = bSize;
+                    break;
+                }
+                pos += bSize;
+            }
+
+            // 2. Patch duration inside moov
+            if (moovPos !== -1) {
+                function patchMoov(start, end) {
+                    let p = start;
+                    while (p <= end - 8) {
+                        let subSize = view.getUint32(p);
+                        const subType = String.fromCharCode(data[p+4], data[p+5], data[p+6], data[p+7]);
+                        if (subSize < 8 || p + subSize > end) break;
+
+                        if (['trak', 'mdia', 'minf', 'mvex'].includes(subType)) {
+                            patchMoov(p + 8, p + subSize);
+                        } else if (subType === 'mvhd' && subSize >= 28) {
+                            const ver = data[p + 8];
+                            if (ver === 0) {
+                                const ts = view.getUint32(p + 20);
+                                if (ts > 0) movieTimescale = ts;
+                                const dur = Math.round(durationSec * movieTimescale);
+                                view.setUint32(p + 24, dur);
+                            } else if (ver === 1 && subSize >= 40) {
+                                const ts = view.getUint32(p + 28);
+                                if (ts > 0) movieTimescale = ts;
+                                const dur = BigInt(Math.round(durationSec * movieTimescale));
+                                view.setBigUint64(p + 32, dur);
+                            }
+                        } else if (subType === 'tkhd' && subSize >= 32) {
+                            const ver = data[p + 8];
+                            if (ver === 0) {
+                                const dur = Math.round(durationSec * movieTimescale);
+                                view.setUint32(p + 28, dur);
+                            } else if (ver === 1 && subSize >= 44) {
+                                const dur = BigInt(Math.round(durationSec * movieTimescale));
+                                view.setBigUint64(p + 36, dur);
+                            }
+                        } else if (subType === 'mdhd' && subSize >= 28) {
+                            const ver = data[p + 8];
+                            if (ver === 0) {
+                                let ts = view.getUint32(p + 20);
+                                if (ts <= 0) ts = movieTimescale;
+                                const dur = Math.round(durationSec * ts);
+                                view.setUint32(p + 24, dur);
+                            } else if (ver === 1 && subSize >= 40) {
+                                let ts = view.getUint32(p + 28);
+                                if (ts <= 0) ts = movieTimescale;
+                                const dur = BigInt(Math.round(durationSec * ts));
+                                view.setBigUint64(p + 32, dur);
+                            }
+                        } else if (subType === 'mehd' && subSize >= 16) {
+                            const ver = data[p + 8];
+                            if (ver === 0) {
+                                const dur = Math.round(durationSec * movieTimescale);
+                                view.setUint32(p + 12, dur);
+                            } else if (ver === 1 && subSize >= 20) {
+                                const dur = BigInt(Math.round(durationSec * movieTimescale));
+                                view.setBigUint64(p + 12, dur);
+                            }
+                        }
+                        p += subSize;
+                    }
+                }
+                patchMoov(moovPos + 8, moovPos + moovSize);
+            }
+
+            // 3. Scan moof boxes across file to build mfra index
+            pos = 0;
+            const trafs = {};
+
+            while (pos <= data.length - 8) {
+                let bSize = view.getUint32(pos);
+                const bType = String.fromCharCode(data[pos+4], data[pos+5], data[pos+6], data[pos+7]);
+                if (bSize === 1 && pos + 16 <= data.length) {
+                    bSize = Number(view.getBigUint64(pos + 8));
+                } else if (bSize === 0) {
+                    bSize = data.length - pos;
+                }
+                if (bSize < 8 || pos + bSize > data.length) break;
+
+                if (bType === 'moof') {
+                    const moofOffset = BigInt(pos);
+                    const moofEnd = pos + bSize;
+                    let subP = pos + 8;
+                    while (subP <= moofEnd - 8) {
+                        const subSize = view.getUint32(subP);
+                        const subType = String.fromCharCode(data[subP+4], data[subP+5], data[subP+6], data[subP+7]);
+                        if (subSize < 8 || subP + subSize > moofEnd) break;
+
+                        if (subType === 'traf') {
+                            let trafP = subP + 8;
+                            const trafEnd = subP + subSize;
+                            let trackId = 1;
+                            let decodeTime = 0n;
+
+                            while (trafP <= trafEnd - 8) {
+                                const tSize = view.getUint32(trafP);
+                                const tType = String.fromCharCode(data[trafP+4], data[trafP+5], data[trafP+6], data[trafP+7]);
+                                if (tSize < 8 || trafP + tSize > trafEnd) break;
+
+                                if (tType === 'tfhd' && tSize >= 16) {
+                                    trackId = view.getUint32(trafP + 12);
+                                } else if (tType === 'tfdt' && tSize >= 16) {
+                                    const ver = data[trafP + 8];
+                                    if (ver === 0 && tSize >= 16) {
+                                        decodeTime = BigInt(view.getUint32(trafP + 12));
+                                    } else if (ver === 1 && tSize >= 20) {
+                                        decodeTime = view.getBigUint64(trafP + 12);
+                                    }
+                                }
+                                trafP += tSize;
+                            }
+
+                            if (!trafs[trackId]) trafs[trackId] = [];
+                            trafs[trackId].push({ time: decodeTime, offset: moofOffset });
+                        }
+                        subP += subSize;
+                    }
+                }
+                pos += bSize;
+            }
+
+            // 4. Construct ISO mfra (Movie Fragment Random Access) box
+            const trackIds = Object.keys(trafs);
+            if (trackIds.length > 0) {
+                const tfraBuffers = [];
+                let mfraContentSize = 0;
+
+                for (const trackIdStr of trackIds) {
+                    const tId = parseInt(trackIdStr, 10);
+                    const entries = trafs[tId];
+                    const tfraSize = 24 + entries.length * 19;
+                    const tfraBuf = new Uint8Array(tfraSize);
+                    const tfraView = new DataView(tfraBuf.buffer);
+
+                    tfraView.setUint32(0, tfraSize);
+                    tfraBuf.set([0x74, 0x66, 0x72, 0x61], 4); // 'tfra'
+                    tfraBuf[8] = 1; // version 1
+                    tfraBuf[9] = 0; tfraBuf[10] = 0; tfraBuf[11] = 0;
+                    tfraView.setUint32(12, tId);
+                    tfraView.setUint32(16, 0);
+                    tfraView.setUint32(20, entries.length);
+
+                    let entryOffset = 24;
+                    for (const entry of entries) {
+                        tfraView.setBigUint64(entryOffset, entry.time);
+                        tfraView.setBigUint64(entryOffset + 8, entry.offset);
+                        tfraBuf[entryOffset + 16] = 1;
+                        tfraBuf[entryOffset + 17] = 1;
+                        tfraBuf[entryOffset + 18] = 1;
+                        entryOffset += 19;
+                    }
+
+                    tfraBuffers.push(tfraBuf);
+                    mfraContentSize += tfraSize;
+                }
+
+                const mfraTotalSize = 8 + mfraContentSize + 16;
+                const mfroBuf = new Uint8Array(16);
+                const mfroView = new DataView(mfroBuf.buffer);
+                mfroView.setUint32(0, 16);
+                mfroBuf.set([0x6d, 0x66, 0x72, 0x6f], 4); // 'mfro'
+                mfroView.setUint32(8, 0);
+                mfroView.setUint32(12, mfraTotalSize);
+
+                const mfraHeader = new Uint8Array(8);
+                const mfraHeaderView = new DataView(mfraHeader.buffer);
+                mfraHeaderView.setUint32(0, mfraTotalSize);
+                mfraHeader.set([0x6d, 0x66, 0x72, 0x61], 4); // 'mfra'
+
+                return new Blob([data, mfraHeader, ...tfraBuffers, mfroBuf], { type: 'video/mp4' });
+            }
+
+            return new Blob([data], { type: 'video/mp4' });
+        }
+
+        // --- Hardware-Accelerated Merger Engine ---
         mergeBtn.addEventListener('click', async () => {
             if (mergedBlobUrl) {
                 triggerDownload(mergedBlobUrl, mergedFilename);
@@ -763,6 +975,8 @@
                     bgSource.start();
                 }
 
+                let calculatedTotalSec = 0;
+
                 // Play & Draw Clips Sequentially with Centered Black Bars
                 for (let i = 0; i < mergeFiles.length; i++) {
                     const file = mergeFiles[i];
@@ -784,6 +998,7 @@
                         }
 
                         v.onloadedmetadata = () => {
+                            calculatedTotalSec += (v.duration || 0.1);
                             const vW = v.videoWidth;
                             const vH = v.videoHeight;
                             const vAspect = vW / vH;
@@ -841,15 +1056,19 @@
                 if (bgSource) try { bgSource.stop(); } catch (e) {}
                 audioCtx.close();
 
-                const videoBlob = new Blob(recordedChunks, { type: 'video/mp4' });
-                mergedBlobUrl = URL.createObjectURL(videoBlob);
+                statusText.innerText = "Indexing MP4 file for seekable timeline...";
+                const rawVideoBlob = new Blob(recordedChunks, { type: 'video/mp4' });
+
+                // Make MP4 fully seekable by injecting duration and mfra index table
+                const seekableVideoBlob = await makeMp4Seekable(rawVideoBlob, calculatedTotalSec);
+                mergedBlobUrl = URL.createObjectURL(seekableVideoBlob);
                 mergedFilename = `merged_video_${resolution}p.mp4`;
 
                 processingProgress.value = 100;
                 mergeBtn.innerText = `⬇️ Download Merged Video (.MP4)`;
                 mergeBtn.classList.add('ready-download');
                 mergeBtn.disabled = false;
-                statusText.innerText = `Done! All ${mergeFiles.length} clips merged cleanly into MP4.`;
+                statusText.innerText = `Done! All ${mergeFiles.length} clips merged into seekable MP4.`;
 
             } catch (err) {
                 console.error("Merge error:", err);
@@ -983,15 +1202,19 @@
                 await finished;
                 audioCtx.close();
 
-                const videoBlob = new Blob(recordedChunks, { type: 'video/mp4' });
-                compressedBlobUrl = URL.createObjectURL(videoBlob);
+                statusText.innerText = "Indexing MP4 file for seekable timeline...";
+                const rawVideoBlob = new Blob(recordedChunks, { type: 'video/mp4' });
+
+                // Make compressed MP4 seekable
+                const seekableVideoBlob = await makeMp4Seekable(rawVideoBlob, targetDur);
+                compressedBlobUrl = URL.createObjectURL(seekableVideoBlob);
                 compressedFilename = `compressed_video.mp4`;
 
                 processingProgress.value = 100;
                 compressBtn.innerText = `⬇️ Download Compressed Video (.MP4)`;
                 compressBtn.classList.add('ready-download');
                 compressBtn.disabled = false;
-                statusText.innerText = "Done! Video compressed & trimmed.";
+                statusText.innerText = "Done! Video compressed, trimmed, and seekable.";
 
             } catch (err) {
                 console.error("Compress error:", err);
